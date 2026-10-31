@@ -1,0 +1,48 @@
+# Needs: oliver006/redis_exporter scraped by Prometheus.
+pages:
+  - id: redis
+    title: Redis
+    icon: database
+    requires: redis_up
+    hint: Run oliver006/redis_exporter and add a Prometheus scrape job for it.
+    panels:
+      - title: Memory used
+        unit: bytes
+        kind: area
+        expr: redis_memory_used_bytes
+        legend: used
+      - title: Connected clients
+        expr: redis_connected_clients
+        legend: clients
+      - title: Commands per second
+        unit: rps
+        expr: rate(redis_commands_processed_total[5m])
+        legend: commands
+      - title: Cache hit rate
+        unit: percent
+        expr: rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m])) * 100
+        legend: hit rate
+      - title: Evicted keys / s
+        unit: rps
+        expr: rate(redis_evicted_keys_total[5m])
+        legend: evicted
+      - title: Keys
+        expr: sum(redis_db_keys)
+        legend: keys
+
+rules:
+  - id: redis-down
+    name: Redis down
+    expr: redis_up
+    direction: below
+    crit: 1
+    for_seconds: 60
+    summary: Redis is not reachable by its exporter.
+  - id: redis-memory
+    name: Redis memory high
+    expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 and redis_memory_max_bytes > 0
+    warn: 80
+    crit: 90
+    for_seconds: 300
+    unit: percent
+    summary: Redis is close to its maxmemory limit; keys will be evicted or writes fail.

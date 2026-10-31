@@ -1,0 +1,70 @@
+# Batteries included: Prometheus + node-exporter + cAdvisor + Loki + Promtail + Nigrani.
+# Only Nigrani is published on the host; everything else stays on the internal network.
+#   cp .env.example .env && docker compose -f docker-compose.full.yml up -d --build
+services:
+  nigrani:
+    build: .
+    image: nigrani:local
+    restart: unless-stopped
+    ports:
+      - "${NIGRANI_PORT:-8080}:8080"
+    env_file: .env
+    environment:
+      NIGRANI_CONFIG: /config/nigrani.yaml
+    volumes:
+      - ./deploy/nigrani.full.yaml:/config/nigrani.yaml:ro
+      - nigrani-data:/data
+    depends_on: [prometheus]
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom-data:/prometheus
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    pid: host
+    command: ["--path.rootfs=/host"]
+    volumes:
+      - /:/host:ro,rslave
+
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.53.0
+    restart: unless-stopped
+    privileged: true
+    devices: ["/dev/kmsg"]
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+
+  loki:
+    image: grafana/loki:3.1.1
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki.yml
+    volumes:
+      - ./deploy/loki.yml:/etc/loki/loki.yml:ro
+      - loki-data:/loki
+
+  promtail:
+    image: grafana/promtail:3.1.1
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail.yml
+    volumes:
+      - ./deploy/promtail.yml:/etc/promtail/promtail.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    depends_on: [loki]
+
+volumes:
+  nigrani-data:
+  prom-data:
+  loki-data:

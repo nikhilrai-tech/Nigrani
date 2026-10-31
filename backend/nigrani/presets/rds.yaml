@@ -1,0 +1,44 @@
+# Needs: prometheus-community/yet-another-cloudwatch-exporter exporting AWS/RDS metrics
+# (metric names follow its default "aws_rds_<metric>_average" convention).
+pages:
+  - id: rds
+    title: AWS RDS
+    icon: database
+    requires: aws_rds_cpuutilization_average
+    hint: Run yet-another-cloudwatch-exporter for AWS/RDS and scrape it with Prometheus.
+    panels:
+      - title: CPU
+        unit: percent
+        kind: area
+        expr: aws_rds_cpuutilization_average
+        legend: "{dimension_DBInstanceIdentifier}"
+      - title: Connections
+        expr: aws_rds_database_connections_average
+        legend: "{dimension_DBInstanceIdentifier}"
+      - title: Free storage
+        unit: bytes
+        expr: aws_rds_free_storage_space_average
+        legend: "{dimension_DBInstanceIdentifier}"
+      - title: Freeable memory
+        unit: bytes
+        expr: aws_rds_freeable_memory_average
+        legend: "{dimension_DBInstanceIdentifier}"
+
+rules:
+  - id: rds-cpu
+    name: RDS CPU high
+    expr: aws_rds_cpuutilization_average
+    warn: 75
+    crit: 90
+    for_seconds: 600
+    unit: percent
+    summary: The database instance CPU is saturated.
+  - id: rds-storage
+    name: RDS free storage low
+    expr: aws_rds_free_storage_space_average
+    direction: below
+    warn: 10000000000
+    crit: 3000000000
+    for_seconds: 600
+    unit: bytes
+    summary: The database is running out of storage.

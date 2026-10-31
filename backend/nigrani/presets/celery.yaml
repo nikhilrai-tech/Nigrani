@@ -1,0 +1,50 @@
+# Needs: danihodovic/celery-exporter scraped by Prometheus.
+pages:
+  - id: celery
+    title: Celery
+    icon: layers
+    requires: celery_worker_up
+    hint: Run danihodovic/celery-exporter against your broker and scrape it.
+    panels:
+      - title: Workers online
+        expr: sum(celery_worker_up)
+        legend: workers
+      - title: Queue length
+        expr: celery_queue_length
+        legend: "{queue_name}"
+      - title: Tasks succeeded / s
+        unit: rps
+        expr: sum by (name) (rate(celery_task_succeeded_total[5m]))
+        legend: "{name}"
+      - title: Tasks failed / s
+        unit: rps
+        expr: sum by (name) (rate(celery_task_failed_total[5m]))
+        legend: "{name}"
+      - title: Task runtime p95
+        unit: seconds
+        expr: histogram_quantile(0.95, sum by (le, name) (rate(celery_task_runtime_bucket[5m])))
+        legend: "{name}"
+
+rules:
+  - id: celery-workers
+    name: No Celery workers
+    expr: sum(celery_worker_up)
+    direction: below
+    crit: 1
+    for_seconds: 120
+    summary: Background tasks are not being processed.
+  - id: celery-queue
+    name: Celery queue backing up
+    expr: celery_queue_length
+    warn: 100
+    crit: 500
+    for_seconds: 300
+    summary: Tasks are queued faster than workers process them.
+  - id: celery-failures
+    name: Celery tasks failing
+    expr: sum(rate(celery_task_failed_total[5m]))
+    warn: 0.05
+    crit: 0.5
+    for_seconds: 300
+    unit: rps
+    summary: Tasks are failing; check the worker logs.

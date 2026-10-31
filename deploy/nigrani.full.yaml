@@ -1,0 +1,13 @@
+# Config used by docker-compose.full.yml
+app:
+  name: Nigrani
+  environment: demo
+
+datasources:
+  prometheus: http://prometheus:9090
+  loki: http://loki:3100
+
+presets: [core]
+
+checks:
+  - { id: nigrani, name: Nigrani UI, type: http, target: "http://nigrani:8080/api/health", interval: 30 }

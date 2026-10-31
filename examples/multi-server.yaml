@@ -1,0 +1,51 @@
+# One Nigrani watching production AND staging.
+# Each server has its own Prometheus (and optionally Loki, services, uptime checks, GitHub repo).
+# Rules, alert history, silences and notification channels are shared, and can be scoped with `servers:`.
+
+app: {name: Acme Ops, environment: ops, timezone: Asia/Kolkata}
+auth: {password: "${NIGRANI_PASSWORD}"}
+presets: [core, django, redis]
+
+servers:
+  - id: prod
+    name: Production
+    environment: production
+    datasources:
+      prometheus: http://10.0.1.20:9090       # reachable from Nigrani: same network, VPN or private IP. Don't expose it publicly.
+      loki: http://10.0.1.20:3100
+    services:
+      - {name: api,    container: api,           group: App}
+      - {name: worker, container: celery-worker, group: App}
+    checks:
+      - {id: api,  name: API,     type: http, target: "https://api.acme.com/health/"}
+      - {id: cert, name: API TLS, type: ssl,  target: "api.acme.com:443", warn_days: 14, interval: 3600}
+    github: {repo: acme/api, workflow: Deploy, branch: main}
+
+  - id: staging
+    name: Staging
+    environment: staging
+    datasources: {prometheus: http://10.0.2.20:9090}
+    checks:
+      - {id: api, name: API, type: http, target: "https://staging-api.acme.com/health/"}
+    github: {repo: acme/api, workflow: Deploy staging, branch: dev}
+
+channels:
+  - id: oncall
+    name: On-call (Teams)
+    type: teams
+    settings: {webhook_url: "${TEAMS_WEBHOOK_URL}"}
+    min_severity: critical
+    servers: [prod]                     # staging problems never page on-call
+  - id: dev
+    name: "Slack #dev-alerts"
+    type: slack
+    settings: {webhook_url: "${SLACK_WEBHOOK_URL}"}
+    min_severity: warning               # no `servers:` = alerts from every server
+
+rules:
+  - id: staging-queue
+    name: Staging queue backing up
+    expr: sum(celery_queue_length)
+    warn: 500
+    crit: 2000
+    servers: [staging]                  # a looser threshold, only on staging

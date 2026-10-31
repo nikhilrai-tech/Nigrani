@@ -1,0 +1,71 @@
+# Needs: django-prometheus (exposes /metrics) scraped by Prometheus.
+tiles:
+  - id: django-rps
+    title: Requests / s
+    unit: rps
+    query: sum(rate(django_http_requests_total_by_method_total[5m]))
+  - id: django-5xx
+    title: 5xx rate
+    unit: percent
+    query: sum(rate(django_http_responses_total_by_status_total{status=~"5.."}[5m])) / sum(rate(django_http_responses_total_by_status_total[5m])) * 100
+    warn: 2
+    crit: 5
+  - id: django-p95
+    title: p95 latency
+    unit: seconds
+    query: histogram_quantile(0.95, sum by (le) (rate(django_http_requests_latency_seconds_by_view_method_bucket[5m])))
+    warn: 1
+    crit: 3
+
+pages:
+  - id: traffic
+    title: Traffic
+    icon: activity
+    requires: django_http_requests_total_by_method_total
+    hint: Install django-prometheus and add a Prometheus scrape job for your API.
+    panels:
+      - title: Requests per second
+        unit: rps
+        kind: area
+        expr: sum(rate(django_http_requests_total_by_method_total[5m]))
+        legend: requests
+      - title: Responses by status
+        unit: rps
+        expr: sum by (status) (rate(django_http_responses_total_by_status_total[5m]))
+        legend: "{status}"
+      - title: Latency percentiles
+        unit: seconds
+        queries:
+          - expr: histogram_quantile(0.50, sum by (le) (rate(django_http_requests_latency_seconds_by_view_method_bucket[5m])))
+            legend: p50
+          - expr: histogram_quantile(0.95, sum by (le) (rate(django_http_requests_latency_seconds_by_view_method_bucket[5m])))
+            legend: p95
+          - expr: histogram_quantile(0.99, sum by (le) (rate(django_http_requests_latency_seconds_by_view_method_bucket[5m])))
+            legend: p99
+      - title: Slowest endpoints (p95)
+        unit: seconds
+        wide: true
+        expr: topk(8, histogram_quantile(0.95, sum by (le, view) (rate(django_http_requests_latency_seconds_by_view_method_bucket[5m]))))
+        legend: "{view}"
+      - title: Database queries per second
+        unit: rps
+        expr: sum(rate(django_db_execute_total[5m]))
+        legend: queries
+
+rules:
+  - id: django-5xx
+    name: High 5xx error rate
+    expr: sum(rate(django_http_responses_total_by_status_total{status=~"5.."}[5m])) / sum(rate(django_http_responses_total_by_status_total[5m])) * 100
+    warn: 2
+    crit: 5
+    for_seconds: 300
+    unit: percent
+    summary: The API is returning server errors. Check the logs for tracebacks.
+  - id: django-latency
+    name: Slow API (p95)
+    expr: histogram_quantile(0.95, sum by (le) (rate(django_http_requests_latency_seconds_by_view_method_bucket[5m])))
+    warn: 1
+    crit: 3
+    for_seconds: 300
+    unit: seconds
+    summary: 95% of requests are slower than the threshold.

@@ -1,0 +1,25 @@
+# Add-on mode: runs ONLY Nigrani and points it at the Prometheus (and optionally Loki)
+# you already have. See docker-compose.full.yml for a batteries-included stack.
+services:
+  nigrani:
+    build: .
+    image: nigrani:local
+    restart: unless-stopped
+    ports:
+      - "${NIGRANI_PORT:-8080}:8080"
+    env_file: .env
+    environment:
+      NIGRANI_CONFIG: /config/nigrani.yaml
+    volumes:
+      - ./nigrani.yaml:/config/nigrani.yaml:ro
+      - nigrani-data:/data
+    # If your Prometheus lives in another compose project, join its network:
+    # networks: [monitoring]
+
+volumes:
+  nigrani-data:
+
+# networks:
+#   monitoring:
+#     external: true
+#     name: <your-compose-project>_default

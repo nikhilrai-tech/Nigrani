@@ -1,0 +1,7 @@
+# Optional but recommended: `pip install pre-commit && pre-commit install`
+# Blocks a commit that contains a secret before it ever reaches the repository.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks

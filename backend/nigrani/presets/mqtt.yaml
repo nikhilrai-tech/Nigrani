@@ -1,0 +1,32 @@
+# Needs: a Mosquitto exporter (e.g. sapcc/mosquitto-exporter) scraped by Prometheus.
+# Metric names differ between exporters; adjust the expressions if yours differ.
+pages:
+  - id: mqtt
+    title: MQTT
+    icon: radio
+    requires: broker_clients_connected
+    hint: Run a Mosquitto exporter pointed at your broker's $SYS topics and scrape it.
+    panels:
+      - title: Connected clients
+        expr: broker_clients_connected
+        legend: clients
+      - title: Messages received / s
+        unit: rps
+        expr: rate(broker_messages_received[5m])
+        legend: received
+      - title: Messages sent / s
+        unit: rps
+        expr: rate(broker_messages_sent[5m])
+        legend: sent
+      - title: Subscriptions
+        expr: broker_subscriptions_count
+        legend: subscriptions
+
+rules:
+  - id: mqtt-no-clients
+    name: MQTT broker has no clients
+    expr: broker_clients_connected
+    direction: below
+    crit: 1
+    for_seconds: 300
+    summary: No client is connected to the broker (devices offline or broker down).

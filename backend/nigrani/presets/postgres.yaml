@@ -1,0 +1,47 @@
+# Needs: prometheus-community/postgres_exporter scraped by Prometheus.
+pages:
+  - id: postgres
+    title: Postgres
+    icon: database
+    requires: pg_up
+    hint: Run postgres_exporter against your database and add a Prometheus scrape job.
+    panels:
+      - title: Connections
+        queries:
+          - expr: sum(pg_stat_activity_count)
+            legend: active
+          - expr: max(pg_settings_max_connections)
+            legend: max
+      - title: Transactions per second
+        unit: rps
+        expr: sum(rate(pg_stat_database_xact_commit[5m]))
+        legend: commits
+      - title: Database size
+        unit: bytes
+        expr: pg_database_size_bytes
+        legend: "{datname}"
+      - title: Cache hit ratio
+        unit: percent
+        expr: sum(rate(pg_stat_database_blks_hit[5m])) / (sum(rate(pg_stat_database_blks_hit[5m])) + sum(rate(pg_stat_database_blks_read[5m]))) * 100
+        legend: hit ratio
+      - title: Deadlocks
+        unit: rps
+        expr: sum(rate(pg_stat_database_deadlocks[5m]))
+        legend: deadlocks
+
+rules:
+  - id: pg-down
+    name: Postgres down
+    expr: pg_up
+    direction: below
+    crit: 1
+    for_seconds: 60
+    summary: The exporter cannot connect to Postgres.
+  - id: pg-connections
+    name: Postgres connections high
+    expr: sum(pg_stat_activity_count) / max(pg_settings_max_connections) * 100
+    warn: 80
+    crit: 90
+    for_seconds: 300
+    unit: percent
+    summary: Connection slots are nearly exhausted.

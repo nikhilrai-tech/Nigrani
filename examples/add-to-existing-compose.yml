@@ -1,0 +1,28 @@
+# Drop Nigrani into a docker-compose project you already have.
+#
+# 1. Copy nigrani.example.yaml -> nigrani.yaml next to your compose file and edit it.
+# 2. Put NIGRANI_PASSWORD (and any webhook secrets) in your .env.
+# 3. Add the service below. It only needs network access to your Prometheus (and Loki, if you have it).
+#
+# Nigrani is a read-only consumer of Prometheus/Loki: it adds no exporters and changes nothing about them.
+# It needs these scraped by Prometheus (see the "presets" table in the README):
+#   node-exporter + cAdvisor   for the `core` preset
+#   django-prometheus, redis_exporter, ...   for the others
+
+services:
+  nigrani:
+    image: ghcr.io/<your-org>/nigrani:latest      # or `build: ../nigrani` while developing
+    restart: unless-stopped
+    ports:
+      - "8080:8080"                             # put it behind your reverse proxy / VPN; see "Security" in the README
+    environment:
+      NIGRANI_CONFIG: /config/nigrani.yaml
+      NIGRANI_PASSWORD: ${NIGRANI_PASSWORD}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+    volumes:
+      - ./nigrani.yaml:/config/nigrani.yaml:ro
+      - nigrani-data:/data                        # incidents, rules, channels (SQLite)
+    depends_on: [prometheus]                     # use your own Prometheus service name
+
+volumes:
+  nigrani-data:

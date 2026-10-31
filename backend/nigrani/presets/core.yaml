@@ -1,0 +1,74 @@
+# Needs: node-exporter + cAdvisor scraped by Prometheus.
+tiles:
+  - id: cpu
+    title: CPU
+    unit: percent
+    query: 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+    warn: 80
+    crit: 90
+    description: Host CPU, 5 min average
+  - id: memory
+    title: Memory
+    unit: percent
+    query: (1 - sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes)) * 100
+    warn: 85
+    crit: 95
+    description: Host memory in use (excludes reclaimable cache)
+  - id: disk
+    title: Disk (fullest)
+    unit: percent
+    query: max(100 - (max by (device, mountpoint) (node_filesystem_avail_bytes{ {{fs}} }) / max by (device, mountpoint) (node_filesystem_size_bytes{ {{fs}} }) * 100))
+    warn: 80
+    crit: 90
+    description: Fullest filesystem on the host
+
+rules:
+  - id: host-cpu
+    name: High CPU
+    expr: 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+    warn: 80
+    crit: 90
+    for_seconds: 300
+    unit: percent
+    summary: Host CPU has stayed high. Check which container is busy on the Containers page.
+  - id: host-memory
+    name: High memory
+    expr: (1 - sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes)) * 100
+    warn: 85
+    crit: 95
+    for_seconds: 300
+    unit: percent
+    summary: Host is running low on available memory; the OOM killer may start killing containers.
+  - id: host-disk
+    name: Disk filling up
+    expr: 100 - (max by (device, mountpoint) (node_filesystem_avail_bytes{ {{fs}} }) / max by (device, mountpoint) (node_filesystem_size_bytes{ {{fs}} }) * 100)
+    warn: 80
+    crit: 90
+    for_seconds: 300
+    unit: percent
+    summary: A filesystem is nearly full. Prune images/logs or grow the volume.
+  - id: host-disk-forecast
+    name: Disk full soon (forecast)
+    expr: (max by (device, mountpoint) (node_filesystem_avail_bytes{ {{fs}} }) / -deriv(max by (device, mountpoint) (node_filesystem_avail_bytes{ {{fs}} })[6h:5m])) / 86400
+    direction: below
+    warn: 7
+    crit: 2
+    for_seconds: 900
+    unit: days
+    summary: At the current rate this filesystem fills up within the threshold.
+  - id: target-down
+    name: Scrape target down
+    expr: up
+    direction: below
+    crit: 1
+    for_seconds: 60
+    unit: short
+    summary: Prometheus cannot scrape this target, so the service or its exporter is down.
+  - id: container-restarts
+    name: Container restarting
+    expr: max by (name) (changes(container_start_time_seconds{name!=""}[10m]))
+    warn: 2
+    crit: 4
+    for_seconds: 0
+    unit: short
+    summary: Container restarted repeatedly in the last 10 minutes (crash loop).

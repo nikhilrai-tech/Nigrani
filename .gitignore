@@ -1,0 +1,13 @@
+.venv/
+node_modules/
+frontend/dist/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+data/
+*.db
+*.db-wal
+*.db-shm
+# your real config (may contain secrets); commit only nigrani.example.yaml
+/nigrani.yaml

@@ -1,0 +1,130 @@
+# Nigrani configuration. Copy to nigrani.yaml and edit. Every key is optional; unknown keys are rejected
+# so typos fail loudly at startup. ${VAR} / ${VAR:-default} are read from the environment.
+
+app:
+  name: Nigrani
+  environment: production        # shown as a badge and in every notification
+  timezone: UTC                  # used for quiet hours and the daily digest, e.g. Asia/Kolkata
+  public_url: ""                 # e.g. https://nigrani.example.com  (adds "Open Nigrani" links to alerts)
+
+auth:
+  username: admin
+  password: ${NIGRANI_PASSWORD}    # required; Nigrani refuses to start without it
+  session_hours: 24
+
+datasources:
+  prometheus: http://prometheus:9090
+  loki: http://loki:3100         # optional; enables the Logs page. Leave empty to disable.
+  loki_container_label: container
+
+# Which built-in dashboards + alert rules to enable. Each one needs the matching exporter scraped by Prometheus.
+#   core      node-exporter + cAdvisor   host CPU/memory/disk, container restarts, scrape targets down
+#   django    django-prometheus          Traffic page, 5xx rate and latency alerts
+#   redis     redis_exporter             Redis page, memory alerts
+#   postgres  postgres_exporter          Postgres page, connection alerts
+#   rds       yet-another-cloudwatch-exporter (AWS/RDS)
+#   mqtt      a Mosquitto exporter
+#   celery    celery-exporter            workers, queue length, failures
+presets: [core, django, redis, celery]
+
+# Optional. Containers you consider critical: if one stops, you get a "Container down" alert.
+# Nigrani also auto-tracks any container that has been running for 10+ minutes (containers.auto_track).
+services:
+  - { name: api,           container: api,           group: App }
+  - { name: worker,        container: celery-worker, group: App }
+  - { name: redis,         container: redis,         group: Data }
+
+containers:
+  label: name                    # cAdvisor label that holds the container name
+  stale_seconds: 90
+  auto_track: true
+  exclude: []                    # regexes of container names to ignore, e.g. ["^other-project-"]
+
+# Synthetic uptime checks (HTTP / TCP / TLS-certificate expiry).
+checks:
+  - { id: api-health, name: API,        type: http, target: "https://api.example.com/health/", interval: 60 }
+  - { id: api-cert,   name: API certificate, type: ssl, target: "api.example.com:443", warn_days: 14, interval: 3600 }
+  - { id: broker,     name: MQTT broker,type: tcp,  target: "mqtt.example.com:8883" }
+
+# Notification channels. Secrets belong in the environment: "${NAME}" is expanded when a message is sent,
+# so the value never has to be stored in the database. Channels can also be managed from the UI.
+channels:
+  - id: slack-ops
+    name: "Slack #ops"
+    type: slack
+    settings: { webhook_url: "${SLACK_WEBHOOK_URL}" }
+    min_severity: warning          # info | warning | critical
+  - id: teams-oncall
+    name: Teams on-call
+    type: teams                    # a Teams "Workflows" webhook URL
+    settings: { webhook_url: "${TEAMS_WEBHOOK_URL}" }
+    min_severity: critical
+    quiet_hours: [22, 7]           # non-critical alerts are muted 22:00-07:00 (app.timezone)
+  # Also available: discord, telegram, email (SMTP), whatsapp (via Twilio), webhook (signed JSON)
+  # - { id: tg, name: Telegram, type: telegram, settings: { bot_token: "${TELEGRAM_BOT_TOKEN}", chat_id: "${TELEGRAM_CHAT_ID}" } }
+
+# Deploy markers on charts + a Deploys page (GitHub Actions runs).
+github:
+  repo: ""                       # "owner/name"
+  token: ${GITHUB_TOKEN}         # optional for public repos
+  workflow: Deploy               # only runs whose name contains this
+  branch: main
+
+# A short summary posted to your channels.
+digest:
+  enabled: false
+  hour: 9
+  weekday: null                  # 0=Mon ... 6=Sun; null = daily (24h), a number = weekly (7d)
+  channels: []                   # empty = all channels
+
+alerts:
+  eval_interval: 30              # seconds between rule evaluations
+  repeat_interval: 14400         # re-notify an unresolved alert every 4h
+  absent_grace: 300              # resolve an alert whose series disappeared after this long
+
+status_page:
+  enabled: false                 # public, login-free page at /#/status (service names + uptime only)
+  title: System status
+
+# ---- Customising ------------------------------------------------------------------------------------------
+
+# Replace or add alert rules. A rule with the same id as a preset rule replaces it.
+# Rules are seeded into the database once; afterwards thresholds are edited in the UI.
+rules:
+  - id: queue-depth
+    name: Job queue backing up
+    expr: sum(celery_queue_length)
+    warn: 100
+    crit: 500
+    for_seconds: 300
+    unit: short
+    summary: Workers can't keep up.
+
+# Your own dashboard pages (appear in the sidebar). `requires` hides the page until the metric exists.
+pages:
+  - id: devices
+    title: Devices
+    icon: radio
+    requires: devices_online
+    hint: Expose a devices_online gauge from your app.
+    panels:
+      - title: Devices online
+        unit: short
+        kind: area
+        expr: sum(devices_online)
+        legend: online
+      - title: Telemetry lag by region
+        unit: seconds
+        wide: true
+        expr: max by (region) (telemetry_lag_seconds)
+        legend: "{region}"
+
+# Switch off a preset rule/tile/page you don't want.
+disable:
+  rules: []
+  tiles: []
+  pages: []
+
+# How host filesystems are filtered (regexes used in PromQL).
+host:
+  fstype_exclude: "tmpfs|overlay|squashfs|devtmpfs|devfs|iso9660|nsfs|fuse.*"
