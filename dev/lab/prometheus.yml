@@ -1,0 +1,8 @@
+global: {scrape_interval: 10s}
+scrape_configs:
+  - {job_name: prometheus, static_configs: [{targets: ["localhost:9090"]}]}
+  - {job_name: redis, static_configs: [{targets: ["redis-exporter:9121"]}]}
+  - {job_name: postgres, static_configs: [{targets: ["postgres-exporter:9187"]}]}
+  - {job_name: mqtt, static_configs: [{targets: ["mosquitto-exporter:9234"]}]}
+  - {job_name: django, metrics_path: /metrics, static_configs: [{targets: ["web:8000"]}]}
+  - {job_name: celery, static_configs: [{targets: ["celery-exporter:9808"]}]}

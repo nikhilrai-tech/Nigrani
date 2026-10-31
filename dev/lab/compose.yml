@@ -1,0 +1,38 @@
+# A throw-away stack of REAL services + their exporters, used to check that Nigrani's presets match the metrics
+# the exporters actually emit. Versions are pinned to the ones the presets were last verified against.
+name: nigrani-lab
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    volumes: ["./prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+
+  redis: {image: "redis:7.4-alpine"}
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.96.0
+    command: ["--redis.addr=redis://redis:6379"]
+
+  postgres:
+    image: postgres:16-alpine
+    environment: {POSTGRES_PASSWORD: lab-only-not-a-secret}
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+    environment: {DATA_SOURCE_NAME: "postgresql://postgres:lab-only-not-a-secret@postgres:5432/postgres?sslmode=disable"}
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    volumes: ["./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro"]
+  mosquitto-exporter:        # unmaintained upstream image (last built 2021); the only commonly used one
+    image: sapcc/mosquitto-exporter:latest
+    environment: {BROKER_ENDPOINT: "tcp://mosquitto:1883"}
+
+  web: {build: ./web}        # Django + django-prometheus
+  worker: {build: ./celeryapp}
+  celery-exporter:
+    image: danihodovic/celery-exporter:latest
+    command: ["--broker-url=redis://redis:6379/1"]
+
+  nigrani:
+    build: {context: ../.., dockerfile: Dockerfile}
+    environment: {NIGRANI_ALLOW_NO_AUTH: "1"}   # lab only, never do this on a real deployment
+    volumes: ["./nigrani.yaml:/config/nigrani.yaml:ro"]
+    ports: ["127.0.0.1:8091:8080"]

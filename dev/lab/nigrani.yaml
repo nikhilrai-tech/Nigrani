@@ -1,0 +1,4 @@
+# Presets under test (rds needs a real AWS account, so it is not part of this lab).
+app: {name: Nigrani lab, environment: lab}
+datasources: {prometheus: "http://prometheus:9090"}
+presets: [core, django, redis, postgres, mqtt, celery]

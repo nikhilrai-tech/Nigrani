@@ -16,6 +16,10 @@ def _ts(s: str | None) -> float | None:
     return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
 
 
+# Runs that are never a deploy: Dependabot's internal "dynamic" jobs and pull-request builds.
+NOT_DEPLOYS = {"dynamic", "pull_request", "pull_request_target"}
+
+
 class GithubDeploys:
     def __init__(self, cfg: GithubCfg, client: httpx.AsyncClient | None = None):
         self.cfg = cfg
@@ -44,11 +48,20 @@ class GithubDeploys:
             r.raise_for_status()
             runs = r.json().get("workflow_runs", [])
             self.error = None
+        except httpx.HTTPStatusError as e:
+            code = e.response.status_code
+            hint = {404: " (repo not found, or it is private: set github.token)",
+                    401: " (bad github.token)",
+                    403: " (rate limited or token lacks access: set github.token)"}.get(code, "")
+            self.error = f"GitHub API returned {code}{hint}"
+            return self._cache[1] if self._cache else []
         except (httpx.HTTPError, ValueError) as e:
             self.error = f"{type(e).__name__}: {e}"
             return self._cache[1] if self._cache else []
         out = []
         for w in runs:
+            if w.get("event") in NOT_DEPLOYS:
+                continue
             if self.cfg.workflow and self.cfg.workflow.lower() not in (w.get("name") or "").lower():
                 continue
             start = _ts(w.get("run_started_at")) or _ts(w.get("created_at"))
@@ -57,7 +70,7 @@ class GithubDeploys:
                 "id": w["id"], "name": w.get("name"), "title": (w.get("display_title") or "")[:120],
                 "branch": w.get("head_branch"), "sha": (w.get("head_sha") or "")[:7], "status": w.get("status"),
                 "conclusion": w.get("conclusion"), "started_at": start, "finished_at": end,
-                "actor": (w.get("actor") or {}).get("login"), "url": w.get("html_url"),
+                "actor": (w.get("actor") or {}).get("login"), "url": w.get("html_url"), "event": w.get("event"),
             })
         out = out[: self.cfg.limit]
         self._cache = (time.time(), out)
