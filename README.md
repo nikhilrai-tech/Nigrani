@@ -33,7 +33,7 @@ silently stops. Nigrani answers the operational questions directly:
 | **Alerts** | Rules editable in the UI (thresholds, duration, PromQL with live preview), silences, and an **incident timeline** showing when each alert started, how long it lasted and what its peak was |
 | **Integrations** | Slack, Teams, Discord, Telegram, Email, WhatsApp (Twilio), signed webhook. Per-channel severity + quiet hours, "send test" button |
 | **Uptime** | HTTP / TCP / TLS-certificate-expiry checks with 30-day uptime and an optional public status page |
-| **Deploys** | GitHub Actions runs, shown as dashed markers on charts |
+| **Deploys** | GitHub Actions runs (pull-request and Dependabot runs are ignored), shown as dashed markers on charts |
 | **Digest** | A daily or weekly summary message |
 | **Multiple servers** | Watch production and staging (or any number of environments) from one dashboard, with an all-servers view and per-server routing of alerts |
 | **UI** | Light/dark, responsive, keyboard accessible, no external fonts or CDNs |
@@ -126,7 +126,11 @@ Nigrani only reads from Prometheus/Loki. Which pages light up depends on which e
 | `mqtt` | a Mosquitto exporter | MQTT page |
 | `celery` | [celery-exporter](https://github.com/danihodovic/celery-exporter) | Celery page, queue/worker alerts |
 
-A page whose metrics are missing shows which exporter to add, instead of empty charts. Logs need Loki with a
+A page whose metrics are missing shows which exporter to add, instead of empty charts.
+
+The `django`, `redis`, `postgres`, `mqtt` and `celery` presets are checked against the real exporters in
+[dev/lab](dev/lab) (versions listed there); `core` is checked against node-exporter + cAdvisor.
+`rds` is **not** verified yet (it needs a real AWS account). Logs need Loki with a
 container-name label (see [deploy/promtail.yml](deploy/promtail.yml)).
 
 > **Docker 29+ and cAdvisor:** cAdvisor older than v0.53 can't talk to the Docker 29 API, so container names are
@@ -244,6 +248,9 @@ NIGRANI_ALLOW_NO_AUTH=1 NIGRANI_PROMETHEUS_URL=http://localhost:9090 NIGRANI_DAT
 # frontend (proxies /api to :8080)
 cd frontend && npm install && npm run dev
 ```
+
+Presets are PromQL against third-party metric names, so they are tested against real exporters: see
+[dev/lab/README.md](dev/lab/README.md) (`docker compose up`, `./traffic.sh`, `python3 verify.py`).
 
 To add a preset, drop a YAML file with `tiles`, `pages` and `rules` into `backend/nigrani/presets/` (see
 `redis.yaml` for the shape); it is picked up by name.
