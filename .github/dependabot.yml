@@ -3,6 +3,9 @@ updates:
   - package-ecosystem: pip
     directory: /backend
     schedule: {interval: weekly}
+    # requirements.txt holds compatibility ranges (>=floor,<next-major), not pins: only widen/raise them
+    # when a new release actually needs it, instead of opening a PR for every minor release.
+    versioning-strategy: increase-if-necessary
   - package-ecosystem: npm
     directory: /frontend
     schedule: {interval: weekly}
