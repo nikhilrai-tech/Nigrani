@@ -49,6 +49,10 @@ class SeriesState:
     signal: Signal | None = None
     retry_kind: str | None = None  # notification kind to re-send because every channel failed
     retries: int = 0
+    acked_at: float | None = None  # someone is on it: reminders pause (until ack_until, or until it resolves)
+    ack_until: float | None = None
+    acked_by: str = ""
+    ack_note: str = ""
 
 
 def classify(value: float, direction: str, warn: float | None, crit: float | None) -> tuple[str | None, float | None]:
@@ -90,6 +94,8 @@ class Engine:
             self.state[key] = SeriesState(
                 pending_since=inc["started_at"], last_seen=now, firing=True, severity=inc["severity"],
                 incident_id=inc["id"], last_notified=inc["last_notified"] or inc["started_at"], value=inc["last_value"],
+                acked_at=inc.get("acked_at"), ack_until=inc.get("ack_until"), acked_by=inc.get("acked_by") or "",
+                ack_note=inc.get("ack_note") or "",
                 # rebuild what the messages need (rule name, series, unit...) so a "resolved" after a restart
                 # reads like any other
                 signal=Signal(
@@ -103,7 +109,8 @@ class Engine:
     def _link(self) -> str:
         return self.cfg.app.public_url.rstrip("/") + "/#/alerts" if self.cfg.app.public_url else ""
 
-    async def _notify(self, kind: str, st: SeriesState, sig: Signal, now: float) -> None:
+    async def _notify(self, kind: str, st: SeriesState, sig: Signal, now: float,
+                      ack: tuple[str, str] | None = None) -> None:
         inc = self.store.get_incident(st.incident_id) if st.incident_id else None
         started = inc["started_at"] if inc else st.pending_since
         if self.store.is_silenced(sig.source_id, sig.series, now, sig.server):
@@ -117,6 +124,8 @@ class Engine:
             environment=self.envs.get(sig.server, self.cfg.app.environment),
             link=self._link(), incident_id=st.incident_id,
             server=self.names.get(sig.server, sig.server) if self.multi else "",
+            ack_by=(ack[0] if ack else st.acked_by) if (ack or kind == "resolved") else "",
+            ack_note=ack[1] if ack else "",
         )
         ev["server_id"] = sig.server
         st.last_notified = now
@@ -128,7 +137,7 @@ class Engine:
             log.exception("notification failed")
             res = {"wanted": 1, "ok": 0}
         # every wanted channel failed (webhook down, typo...): try again on the next cycles instead of going silent
-        if res and res["wanted"] and not res["ok"] and kind != "resolved" and st.retries < MAX_RETRIES:
+        if res and res["wanted"] and not res["ok"] and kind not in ("resolved", "acknowledged") and st.retries < MAX_RETRIES:
             st.retry_kind, st.retries = kind, st.retries + 1
         else:
             st.retry_kind, st.retries = None, 0
@@ -160,13 +169,59 @@ class Engine:
             st.severity = sig.severity
             self.store.update_incident(st.incident_id, severity=sig.severity, threshold=sig.threshold)
             if escalated:
+                if st.acked_at is not None:      # it got worse: whoever acknowledged it needs to look again
+                    self._clear_ack(st)
                 await self._notify("escalated", st, sig, now)
         peak = self._peak(st.incident_id, sig)
         self.store.update_incident(st.incident_id, last_value=sig.value, peak_value=peak)
         if st.retry_kind:
             await self._notify(st.retry_kind, st, sig, now)
-        elif now - st.last_notified >= self.cfg.alerts.repeat_interval:
+        elif now - st.last_notified >= self.cfg.alerts.repeat_interval and not self._is_acked(st, now):
             await self._notify("reminder", st, sig, now)
+
+    @staticmethod
+    def _is_acked(st: SeriesState, now: float) -> bool:
+        return st.acked_at is not None and (st.ack_until is None or now < st.ack_until)
+
+    def _clear_ack(self, st: SeriesState) -> None:
+        st.acked_at = st.ack_until = None
+        st.acked_by = st.ack_note = ""
+        if st.incident_id:
+            self.store.clear_ack(st.incident_id)
+
+    def _find(self, incident_id: int) -> tuple[Key, SeriesState] | None:
+        return next(((k, st) for k, st in self.state.items() if st.incident_id == incident_id and st.firing), None)
+
+    async def acknowledge(self, incident_id: int, by: str, note: str = "", hours: float | None = None,
+                          now: float | None = None) -> dict | None:
+        """Mark a firing incident as being handled: its reminders pause (for `hours`, or until it resolves) and the
+        channels are told once. Returns the incident, or None if it is not firing."""
+        now = now or self.clock()
+        inc = self.store.get_incident(incident_id)
+        if not inc or inc["status"] != "firing":
+            return None
+        until = now + hours * 3600 if hours else None
+        self.store.ack_incident(incident_id, by, note, until, now)
+        found = self._find(incident_id)
+        if found:
+            _, st = found
+            st.acked_at, st.ack_until, st.acked_by, st.ack_note = now, until, by, note
+            sig = st.signal or Signal(inc["source_id"], inc["rule_name"], inc["series"], inc["series_key"],
+                                      inc["severity"], inc["last_value"], inc["threshold"], inc["unit"], inc["summary"],
+                                      server=inc["server"])
+            await self._notify("acknowledged", st, sig, now, ack=(by, note))
+        return self.store.get_incident(incident_id)
+
+    def unacknowledge(self, incident_id: int) -> dict | None:
+        inc = self.store.get_incident(incident_id)
+        if not inc or inc["status"] != "firing":
+            return None
+        found = self._find(incident_id)
+        if found:
+            self._clear_ack(found[1])
+        else:
+            self.store.clear_ack(incident_id)
+        return self.store.get_incident(incident_id)
 
     def _peak(self, incident_id: int | None, sig: Signal) -> float | None:
         inc = self.store.get_incident(incident_id) if incident_id else None

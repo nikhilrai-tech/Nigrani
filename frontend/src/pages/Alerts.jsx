@@ -101,12 +101,54 @@ export function RuleModal({ rule, initial, onClose, onSaved }) {
   );
 }
 
+const ACK_CHOICES = [['1 hour', 1], ['4 hours', 4], ['24 hours', 24], ['Until it resolves', null]];
+
+function AckModal({ incident, onClose, onDone }) {
+  const [note, setNote] = useState('');
+  const [hours, setHours] = useState(4);
+  const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true); setErr(null);
+    try { await api(`/incidents/${incident.id}/ack`, { method: 'POST', body: { hours, note } }); onDone(); }
+    catch (e) { setErr(e.message); setBusy(false); }
+  };
+  return (
+    <Modal title="Acknowledge alert" onClose={onClose} actions={<>
+      <button className="btn" onClick={onClose}>Cancel</button>
+      <button className="btn primary" onClick={save} disabled={busy}>Acknowledge</button>
+    </>}>
+      <div className="muted"><b>{incident.rule_name}</b>{incident.series && ` · ${incident.series}`}</div>
+      <p className="hint" style={{ marginBottom: 0 }}>
+        Tells your channels you are on it and pauses reminders for this alert. If it gets worse (warning to critical) or
+        the time is up, you are notified again.
+      </p>
+      <label className="f" htmlFor="ack-note">Note (optional)</label>
+      <input id="ack-note" type="text" value={note} maxLength={300} placeholder="e.g. restarting the worker" onChange={(e) => setNote(e.target.value)} autoFocus />
+      <label className="f" htmlFor="ack-for">Pause reminders for</label>
+      <select id="ack-for" value={hours === null ? 'null' : hours} onChange={(e) => setHours(e.target.value === 'null' ? null : Number(e.target.value))}>
+        {ACK_CHOICES.map(([label, h]) => <option key={label} value={h === null ? 'null' : h}>{label}</option>)}
+      </select>
+      <div style={{ marginTop: 12 }}><ErrorNote>{err}</ErrorNote></div>
+    </Modal>
+  );
+}
+
+function AckBadge({ i }) {
+  if (!i.acked_at) return null;
+  const until = i.ack_until ? `until ${new Date(i.ack_until * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'until resolved';
+  return <Badge kind="info" icon="check">acknowledged by {i.acked_by} · {until}</Badge>;
+}
+
 function Active({ server }) {
+  const [ackFor, setAckFor] = useState(null);
   const { data, error, reload } = useApi(`/incidents?status=firing${server ? `&server=${server}` : ''}`, { interval: 10000 });
   const silence = async (i, minutes) => { await api('/silences', { method: 'POST', body: { server: i.server, source_id: i.source_id, match: i.series || null, minutes, reason: 'Silenced from alerts page' } }); reload(); };
+  const unack = async (i) => { await api(`/incidents/${i.id}/ack`, { method: 'DELETE' }); reload(); };
   if (!data) return error ? <ErrorNote>{error}</ErrorNote> : null;
   if (!data.length) return <Card><Empty title="Nothing is firing">All rules are inside their thresholds.</Empty></Card>;
   return (
+    <>
     <Card flush>
       <div className="scroll"><table className="t">
         <thead><tr><th>Severity</th><th>Alert</th><th>Value</th><th>Since</th><th /></tr></thead>
@@ -115,12 +157,16 @@ function Active({ server }) {
             <td><SevBadge sev={i.severity} /></td>
             <td><b>{i.rule_name}</b>{i.series && <span className="muted"> · {i.series}</span>} <ServerTag id={i.server} /><div className="muted" style={{ fontSize: 12.5 }}>{i.summary}</div></td>
             <td>{fmtValue(i.last_value, i.unit)}{i.threshold != null && <div className="muted" style={{ fontSize: 12 }}>threshold {fmtValue(i.threshold, i.unit)}</div>}</td>
-            <td>{fmtAgo(i.started_at)}{i.silenced && <div><Badge>silenced</Badge></div>}</td>
-            <td style={{ whiteSpace: 'nowrap' }}><button className="btn sm" onClick={() => silence(i, 60)}>Silence 1h</button> <button className="btn sm" onClick={() => silence(i, 1440)}>24h</button></td>
+            <td>{fmtAgo(i.started_at)}{i.silenced && <div><Badge>silenced</Badge></div>}<div><AckBadge i={i} /></div>{i.ack_note && <div className="muted" style={{ fontSize: 12 }}>“{i.ack_note}”</div>}</td>
+            <td style={{ whiteSpace: 'nowrap' }}>
+              {i.acked_at ? <button className="btn sm" onClick={() => unack(i)}>Un-acknowledge</button> : <button className="btn sm" onClick={() => setAckFor(i)}>Acknowledge</button>}{' '}
+              <button className="btn sm" onClick={() => silence(i, 60)}>Silence 1h</button> <button className="btn sm" onClick={() => silence(i, 1440)}>24h</button></td>
           </tr>
         ))}</tbody>
       </table></div>
     </Card>
+    {ackFor && <AckModal incident={ackFor} onClose={() => setAckFor(null)} onDone={() => { setAckFor(null); reload(); }} />}
+    </>
   );
 }
 

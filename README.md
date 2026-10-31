@@ -211,6 +211,9 @@ Behaviour worth knowing:
 - **Pending → firing:** nothing is sent until the condition holds for `for_seconds`.
 - **De-duplicated:** one message when it starts, one when it's resolved. Reminders every `alerts.repeat_interval`.
 - **Escalation:** warning → critical sends a new message.
+- **Acknowledge:** on the Alerts page, *Acknowledge* (with an optional note, for 1h / 4h / 24h or until it resolves)
+  tells your channels "✋ X is on it" once and pauses that alert's reminders. If it gets worse (warning to critical)
+  or the time is up you are notified again; the resolved message credits who acknowledged it.
 - **Delivery failures are retried** on the following evaluation cycles; failures are shown on the channel.
 - **Restart-safe:** open incidents are reloaded, so a restart doesn't re-page you.
 - **Silences** suppress messages but the incident is still recorded.
@@ -247,7 +250,7 @@ channels:
 ```
 
 Placeholders: `{emoji}` `{status}` `{severity}` `{rule}` `{series}` `{value}` `{threshold}` `{server}` `{environment}`
-`{duration}` `{summary}` `{link}` `{started_at}` `{kind}`, plus `{title}` and `{body}` for the default text (so you can
+`{duration}` `{summary}` `{link}` `{started_at}` `{kind}` `{acknowledged_by}` `{note}`, plus `{title}` and `{body}` for the default text (so you can
 extend it instead of replacing it). Digests are not templated.
 
 ## Backup and restore

@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS incidents (
   severity TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'firing',
   started_at REAL NOT NULL, resolved_at REAL, last_value REAL, peak_value REAL,
   threshold REAL, unit TEXT NOT NULL DEFAULT 'short', summary TEXT NOT NULL DEFAULT '',
-  last_notified REAL, silenced INTEGER NOT NULL DEFAULT 0, server TEXT NOT NULL DEFAULT 'default'
+  last_notified REAL, silenced INTEGER NOT NULL DEFAULT 0, server TEXT NOT NULL DEFAULT 'default',
+  acked_at REAL, acked_by TEXT, ack_note TEXT, ack_until REAL
 );
 CREATE INDEX IF NOT EXISTS ix_incidents_status ON incidents(status, started_at);
 CREATE TABLE IF NOT EXISTS silences (
@@ -67,7 +68,8 @@ class Store:
         wanted = {
             "rules": [("servers", "TEXT NOT NULL DEFAULT '[]'"), ("datasource", "TEXT NOT NULL DEFAULT 'prometheus'")],
             "channels": [("servers", "TEXT NOT NULL DEFAULT '[]'"), ("title_template", "TEXT"), ("body_template", "TEXT")],
-            "incidents": [("server", "TEXT NOT NULL DEFAULT 'default'")],
+            "incidents": [("server", "TEXT NOT NULL DEFAULT 'default'"), ("acked_at", "REAL"), ("acked_by", "TEXT"),
+                      ("ack_note", "TEXT"), ("ack_until", "REAL")],
             "silences": [("server", "TEXT")],
         }
         for table, cols in wanted.items():
@@ -201,6 +203,14 @@ class Store:
     def resolve_incident(self, incident_id: int, now: float, last_value: float | None) -> None:
         self._x("UPDATE incidents SET status='resolved', resolved_at=?, last_value=COALESCE(?, last_value) WHERE id=?",
                 (now, last_value, incident_id))
+
+    def ack_incident(self, incident_id: int, by: str, note: str, until: float | None, now: float) -> None:
+        self._x("UPDATE incidents SET acked_at=?, acked_by=?, ack_note=?, ack_until=? WHERE id=? AND status='firing'",
+                (now, by, note, until, incident_id))
+
+    def clear_ack(self, incident_id: int) -> None:
+        self._x("UPDATE incidents SET acked_at=NULL, acked_by=NULL, ack_note=NULL, ack_until=NULL WHERE id=?",
+                (incident_id,))
 
     def get_incident(self, incident_id: int) -> dict[str, Any] | None:
         rows = self._q("SELECT * FROM incidents WHERE id=?", (incident_id,))

@@ -81,7 +81,7 @@ export default function Overview() {
                   <SevBadge sev={i.severity} />
                   <div style={{ minWidth: 0 }}>
                     <div><b>{i.rule_name}</b> {i.series && <span className="muted">· {i.series}</span>}</div>
-                    <div className="muted" style={{ fontSize: 12.5 }}>{i.last_value != null && `${fmtValue(i.last_value, i.unit)} · `}since {fmtAgo(i.started_at)}{i.silenced ? ' · silenced' : ''}</div>
+                    <div className="muted" style={{ fontSize: 12.5 }}>{i.last_value != null && `${fmtValue(i.last_value, i.unit)} · `}since {fmtAgo(i.started_at)}{i.silenced ? ' · silenced' : ''}{i.acked_at ? ` · acknowledged by ${i.acked_by}` : ''}</div>
                   </div>
                   <button className="btn sm right" onClick={() => silence(i)}>Silence 1h</button>
                 </div>
