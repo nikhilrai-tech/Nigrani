@@ -55,6 +55,8 @@ channels:
     type: slack
     settings: { webhook_url: "${SLACK_WEBHOOK_URL}" }
     min_severity: warning          # info | warning | critical
+    title_template: "{emoji} {rule} on {server}: {value}"      # optional custom message; see README for placeholders
+    body_template: "{series} for {duration}. {summary}"
   - id: teams-oncall
     name: Teams on-call
     type: teams                    # a Teams "Workflows" webhook URL

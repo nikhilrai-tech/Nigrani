@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Custom message templates per notification channel (`title_template` / `body_template` with placeholders such as
+  `{rule}`, `{series}`, `{value}`, `{server}`, `{duration}`), validated on save, with a live preview in the channel editor.
 - Logs page: "Create alert from this search" turns the current container / level / text filter into a log-based alert
   rule, with the rule editor prefilled and a live preview.
 

@@ -231,6 +231,24 @@ Behaviour worth knowing:
 
 Each channel has a minimum severity and optional quiet hours (critical alerts always come through).
 
+**Custom messages.** Each channel can have its own title and body template, for example a runbook link in Slack and a
+short line in Telegram. Leave them empty for the default text. The editor shows a live preview on a sample alert and
+rejects unknown placeholders.
+
+```yaml
+channels:
+  - id: slack-ops
+    name: "Slack #ops"
+    type: slack
+    settings: { webhook_url: "${SLACK_WEBHOOK_URL}" }
+    title_template: "{emoji} {rule} on {server}: {value}"
+    body_template: "{series} for {duration}. {summary} Runbook: https://wiki.example.com/{rule}"
+```
+
+Placeholders: `{emoji}` `{status}` `{severity}` `{rule}` `{series}` `{value}` `{threshold}` `{server}` `{environment}`
+`{duration}` `{summary}` `{link}` `{started_at}` `{kind}`, plus `{title}` and `{body}` for the default text (so you can
+extend it instead of replacing it). Digests are not templated.
+
 ## Security
 
 - The UI and API require a login. Nigrani refuses to start without a password

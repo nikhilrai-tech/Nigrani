@@ -1,11 +1,54 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, useApi } from '../api';
-import { Badge, Card, Empty, ErrorNote, Modal, Toggle } from '../components/ui';
+import { Badge, Card, Empty, ErrorNote, Modal, Seg, Toggle } from '../components/ui';
 import { useApp } from '../ctx';
 import { fmtAgo } from '../format';
 
 const TYPES = { slack: 'Slack', teams: 'Microsoft Teams', discord: 'Discord', telegram: 'Telegram', whatsapp: 'WhatsApp (Twilio)', email: 'Email (SMTP)', webhook: 'Generic webhook' };
 const SEVS = [['info', 'Everything'], ['warning', 'Warnings & critical'], ['critical', 'Critical only']];
+
+/** Optional per-channel title/body templates with {placeholders} and a live preview on a sample alert. */
+function MessageEditor({ f, setF }) {
+  const ph = useApi('/message-placeholders');
+  const [kind, setKind] = useState('firing');
+  const [prev, setPrev] = useState(null);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    if (!f.title_template && !f.body_template) { setPrev(null); setErr(null); return undefined; }
+    const t = setTimeout(async () => {
+      try {
+        setPrev(await api('/channels/preview', { method: 'POST', body: { title_template: f.title_template || null, body_template: f.body_template || null, kind } }));
+        setErr(null);
+      } catch (e) { setPrev(null); setErr(e.message); }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [f.title_template, f.body_template, kind]);
+
+  return (
+    <details open={!!(f.title_template || f.body_template)} style={{ marginTop: 14 }}>
+      <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Custom message (optional)</summary>
+      <label className="f" htmlFor="c-title-t">Title</label>
+      <input id="c-title-t" type="text" value={f.title_template || ''} placeholder="{emoji} {rule} on {server}: {value}"
+        onChange={(e) => setF({ ...f, title_template: e.target.value })} />
+      <label className="f" htmlFor="c-body-t">Body</label>
+      <textarea id="c-body-t" value={f.body_template || ''} placeholder="{series} for {duration}. {summary} Runbook: https://wiki/…"
+        onChange={(e) => setF({ ...f, body_template: e.target.value })} />
+      <div className="hint">
+        Leave empty for the default text. Placeholders:{' '}
+        {(ph.data || []).map((p) => <code key={p.name} title={p.description} style={{ marginRight: 6 }}>{`{${p.name}}`}</code>)}
+      </div>
+      {(prev || err) && (
+        <div style={{ marginTop: 10 }}>
+          <div className="row" style={{ marginBottom: 6 }}><span className="muted">Preview</span><span className="right"><Seg value={kind} options={['firing', 'resolved']} onChange={setKind} /></span></div>
+          {err ? <ErrorNote>{err}</ErrorNote> : (
+            <div className="notice"><b>{prev.title}</b><div style={{ whiteSpace: 'pre-line' }}>{prev.body}</div></div>
+          )}
+        </div>
+      )}
+    </details>
+  );
+}
 
 function ChannelModal({ channel, fields, onClose, onSaved }) {
   const { servers, multi } = useApp();
@@ -54,7 +97,8 @@ function ChannelModal({ channel, fields, onClose, onSaved }) {
         <div className="row"><input type="number" min="0" max="23" value={f.quiet_start} onChange={(e) => setF({ ...f, quiet_start: Number(e.target.value) })} style={{ width: 80 }} aria-label="Quiet from hour" /><span>to</span>
           <input type="number" min="0" max="23" value={f.quiet_end} onChange={(e) => setF({ ...f, quiet_end: Number(e.target.value) })} style={{ width: 80 }} aria-label="Quiet until hour" /><span className="muted">server timezone, 24h</span></div>
       )}
-      <ErrorNote>{err}</ErrorNote>
+      <MessageEditor f={f} setF={setF} />
+      <div style={{ marginTop: 12 }}><ErrorNote>{err}</ErrorNote></div>
     </Modal>
   );
 }
@@ -93,6 +137,7 @@ export default function Integrations() {
               <div className="row wrap" style={{ marginBottom: 10 }}>
                 <Badge kind="info">{SEVS.find((s) => s[0] === c.min_severity)?.[1]}</Badge>
                 {c.servers?.length > 0 && <Badge kind="info">only: {c.servers.join(', ')}</Badge>}
+                {(c.title_template || c.body_template) && <Badge>custom message</Badge>}
                 {c.quiet_start != null && <Badge>quiet {c.quiet_start}:00–{c.quiet_end}:00</Badge>}
                 {c.last_error ? <Badge kind="crit" icon="alert">last send failed</Badge> : c.last_sent_at ? <Badge kind="ok" icon="check">sent {fmtAgo(c.last_sent_at)}</Badge> : <Badge>never used</Badge>}
               </div>
