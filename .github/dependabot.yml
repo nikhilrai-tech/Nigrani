@@ -6,6 +6,14 @@ updates:
   - package-ecosystem: npm
     directory: /frontend
     schedule: {interval: weekly}
+    groups:
+      react:                    # react and react-dom must move together, or `npm ci` fails on a peer conflict
+        patterns: ["react", "react-dom"]
+    ignore:
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: docker
     directory: /
     schedule: {interval: weekly}
