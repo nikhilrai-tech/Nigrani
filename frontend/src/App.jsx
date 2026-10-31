@@ -4,6 +4,7 @@ import { Icon, Seg } from './components/ui';
 import { AppCtx, useApp } from './ctx';
 import { lsGet, lsSet } from './format';
 import Alerts from './pages/Alerts';
+import Backup from './pages/Backup';
 import Containers from './pages/Containers';
 import Deploys from './pages/Deploys';
 import Fleet from './pages/Fleet';
@@ -81,6 +82,7 @@ function Layout({ me, onLogout, toggleTheme, setRange }) {
       { to: '/uptime', label: 'Uptime', icon: 'shield', key: 'uptime' },
       ...(cur.deploys ? [{ to: '/deploys', label: 'Deploys', icon: 'rocket', key: 'deploys' }] : []),
       { to: '/integrations', label: 'Integrations', icon: 'plug', key: 'integrations' },
+      { to: '/backup', label: 'Backup', icon: 'download', key: 'backup' },
     ];
     return { items, extra, tail };
   }, [pages.data, firing.data, cur, multi]);
@@ -101,6 +103,7 @@ function Layout({ me, onLogout, toggleTheme, setRange }) {
     case 'uptime': view = <Uptime />; break;
     case 'deploys': view = <Deploys />; break;
     case 'integrations': view = <Integrations />; break;
+    case 'backup': view = <Backup />; break;
     default: view = <Overview />;
   }
 

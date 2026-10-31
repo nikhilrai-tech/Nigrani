@@ -35,6 +35,7 @@ silently stops. Nigrani answers the operational questions directly:
 | **Uptime** | HTTP / TCP / TLS-certificate-expiry checks with 30-day uptime and an optional public status page |
 | **Deploys** | GitHub Actions runs (pull-request and Dependabot runs are ignored), shown as dashed markers on charts |
 | **Digest** | A daily or weekly summary message |
+| **Backup** | Export and restore rules, channels and silences as one JSON file, with a dry-run before anything changes |
 | **Multiple servers** | Watch production and staging (or any number of environments) from one dashboard, with an all-servers view and per-server routing of alerts |
 | **UI** | Light/dark, responsive, keyboard accessible, no external fonts or CDNs |
 
@@ -248,6 +249,23 @@ channels:
 Placeholders: `{emoji}` `{status}` `{severity}` `{rule}` `{series}` `{value}` `{threshold}` `{server}` `{environment}`
 `{duration}` `{summary}` `{link}` `{started_at}` `{kind}`, plus `{title}` and `{body}` for the default text (so you can
 extend it instead of replacing it). Digests are not templated.
+
+## Backup and restore
+
+The **Backup** page (or `GET /api/backup`) exports everything you configured in the UI (alert rules, notification
+channels and active silences) as one JSON file; use it to move to a new server or recover from a mistake. Incident
+history is not included.
+
+- **Credentials are left out by default.** Webhook URLs and tokens are exported as `null`; values that reference an
+  environment variable (`${SLACK_URL}`) are kept because they are not secrets. *Include credentials* produces a file
+  with working secrets: treat it like a password and never commit it.
+- **Restore shows a dry run first.** Choosing a file lists what would be created, overwritten or skipped. If anything
+  in the file is invalid (an unknown server, inverted thresholds, a typo in a message template...) nothing is imported.
+- **Nothing is ever deleted.** *merge* keeps existing rules and channels that have the same id; *overwrite* replaces them.
+  A credential missing from the file never erases the one already stored.
+- A channel whose credentials were not in the file is created **disabled** and listed, so it cannot fail silently.
+
+The API equivalent is `POST /api/backup/import?mode=merge|overwrite&dry_run=true|false` (dry run is the default).
 
 ## Security
 

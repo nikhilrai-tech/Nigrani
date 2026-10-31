@@ -21,18 +21,19 @@ from .auth import COOKIE, Auth, make_dependency
 from .checks import CheckRunner
 from .config import Config, ConfigError, ServerView
 from .containers import _fresh, collect_containers, collect_host, container_signals, forget_container, safe_name
+from . import backup as backup_mod
 from .digest import DigestScheduler
 from .engine import Engine, classify
 from .format import build_event
 from .github import GithubDeploys
 from .notifiers import CHANNEL_FIELDS, Notifier, mask_settings
 from .prom import Prom, PromError, PromUnavailable, series_key, series_label
+from .schemas import ChannelIn, RuleIn, rule_problem
 from .store import Store
 from . import templates as msg_templates
 
 log = logging.getLogger("nigrani.api")
 RANGES = {"15m": 900, "1h": 3600, "3h": 10800, "6h": 21600, "24h": 86400, "7d": 604800}
-ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 MASK = "••••"
 
 
@@ -56,40 +57,6 @@ def _prom_guard(e: PromError) -> HTTPException:
     return HTTPException(code, str(e))
 
 
-class RuleIn(BaseModel):
-    id: str | None = None
-    name: str = Field(min_length=1, max_length=120)
-    expr: str = Field(min_length=1, max_length=2000)
-    direction: Literal["above", "below"] = "above"
-    warn: float | None = None
-    crit: float | None = None
-    for_seconds: int = Field(300, ge=0, le=86400)
-    unit: str = "short"
-    summary: str = ""
-    enabled: bool = True
-    servers: list[str] = []
-    datasource: Literal["prometheus", "loki"] = "prometheus"
-
-    @field_validator("id")
-    @classmethod
-    def _id(cls, v: str | None) -> str | None:
-        if v is not None and not ID_RE.match(v):
-            raise ValueError("id must be lowercase letters, digits, - or _")
-        return v
-
-
-class ChannelIn(BaseModel):
-    id: str | None = None
-    name: str = Field(min_length=1, max_length=80)
-    type: Literal["slack", "teams", "discord", "telegram", "email", "webhook", "whatsapp"]
-    settings: dict[str, Any] = {}
-    min_severity: Literal["info", "warning", "critical"] = "warning"
-    quiet_start: int | None = Field(None, ge=0, le=23)
-    quiet_end: int | None = Field(None, ge=0, le=23)
-    enabled: bool = True
-    servers: list[str] = []
-    title_template: str | None = None
-    body_template: str | None = None
 
 
 class PreviewIn(BaseModel):
@@ -452,11 +419,9 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
         _check_servers(r.servers)
         if r.datasource == "loki" and not lokis:
             raise HTTPException(422, "no server has Loki configured (datasources.loki), so a log rule can't be evaluated")
-        if r.warn is not None and r.crit is not None:
-            if (r.direction == "above" and r.warn > r.crit) or (r.direction == "below" and r.warn < r.crit):
-                raise HTTPException(422, "warning threshold must be less severe than critical")
-        if r.warn is None and r.crit is None:
-            raise HTTPException(422, "set at least one of warn / crit")
+        problem = rule_problem(r)
+        if problem:
+            raise HTTPException(422, problem)
 
     @secured.post("/rules")
     async def create_rule(r: RuleIn) -> dict[str, Any]:
@@ -638,6 +603,31 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
     @secured.get("/deploys")
     async def deploys(rt: Runtime = Depends(srv)) -> dict[str, Any]:
         return {"enabled": rt.github.enabled, "error": rt.github.error, "runs": await rt.github.runs()}
+
+    # ---------------- backup / restore ----------------
+    @secured.get("/backup")
+    async def backup(include_secrets: bool = False) -> JSONResponse:
+        data = backup_mod.export_backup(store, include_secrets=include_secrets, app_version=__version__)
+        name = f"nigrani-backup-{time.strftime('%Y%m%d')}.json"
+        return JSONResponse(data, headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    @secured.post("/backup/import")
+    async def backup_import(request: Request, mode: Literal["merge", "overwrite"] = "merge", dry_run: bool = True):
+        """Validate (dry_run=true, the default) or apply (dry_run=false) a backup. All-or-nothing: if anything in the
+        file is invalid nothing is changed, and the problems are listed."""
+        if int(request.headers.get("content-length") or 0) > 2_000_000:
+            raise HTTPException(413, "backup file is too large")
+        try:
+            data = await request.json()
+        except ValueError as e:
+            raise HTTPException(400, "the file is not valid JSON") from e
+        plan = backup_mod.plan_import(store, data, mode=mode, server_ids=set(runtimes), has_loki=bool(lokis))
+        if dry_run:
+            return plan.view()
+        if plan.errors:
+            return JSONResponse({**plan.view(), "applied": False}, status_code=422)
+        backup_mod.apply_import(store, plan, preset_rule_ids={r.id for r in cfg.rules}, drop_rule=engine.drop_rule)
+        return {**plan.view(), "applied": True}
 
     @secured.get("/checks")
     async def get_checks(rt: Runtime = Depends(srv)) -> list[dict[str, Any]]:
