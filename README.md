@@ -76,6 +76,8 @@ Give it about a minute for Prometheus to collect its first samples.
 
 ### C. Plain `docker run`
 
+Once a release is published you can use `ghcr.io/nikhilrai-tech/nigrani:latest` instead of building.
+
 ```bash
 docker build -t nigrani .
 docker run -d --name nigrani -p 8080:8080 \

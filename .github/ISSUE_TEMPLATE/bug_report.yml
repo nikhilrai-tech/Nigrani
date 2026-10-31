@@ -1,0 +1,25 @@
+name: Bug report
+description: Something doesn't work as documented
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations: {required: true}
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Include the relevant part of your `nigrani.yaml` (remove secrets) and the exporters you scrape.
+    validations: {required: true}
+  - type: input
+    id: version
+    attributes:
+      label: Nigrani version / image tag
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "`docker compose logs nigrani`. Remove anything sensitive first."
+      render: text
