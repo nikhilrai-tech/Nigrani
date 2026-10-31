@@ -198,6 +198,9 @@ rules:
     for_seconds: 0
 ```
 
+On the Logs page, *Create alert from this search* builds one of these rules from the container, level and text you
+are filtering on.
+
 Servers without Loki skip log rules. The rule editor offers the data source when any server has Loki.
 For a log rule, a series that disappears means "no matching lines", so the alert resolves on the next cycle instead of
 after `alerts.absent_grace`. If Loki itself is down the rule shows a query error and nothing is resolved.

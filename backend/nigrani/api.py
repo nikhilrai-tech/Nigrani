@@ -601,7 +601,7 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
             for ts, line in s["values"]:
                 rows.append({"ts": int(ts) / 1e9, "line": line, "container": s["stream"].get(label, "")})
         rows.sort(key=lambda x: -x["ts"])
-        return {"query": query, "rows": rows[:limit]}
+        return {"query": query, "label": label, "rows": rows[:limit]}
 
     @secured.get("/deploys")
     async def deploys(rt: Runtime = Depends(srv)) -> dict[str, Any]:
