@@ -64,8 +64,9 @@ def classify(value: float, direction: str, warn: float | None, crit: float | Non
 
 class Engine:
     def __init__(self, store: Store, proms: dict[str, Prom] | Prom, notifier: Notifier, cfg: Config,
-                 clock: Callable[[], float] = time.time):
+                 clock: Callable[[], float] = time.time, lokis: dict[str, Prom] | None = None):
         self.store, self.notifier, self.cfg, self.clock = store, notifier, cfg, clock
+        self.lokis: dict[str, Prom] = lokis or {}  # server id -> Loki client (only servers that have Loki)
         self.proms: dict[str, Prom] = proms if isinstance(proms, dict) else {"default": proms}
         views = {v.id: v for v in cfg.server_views()}
         self.names = {sid: views[sid].name if sid in views else sid for sid in self.proms}
@@ -89,6 +90,13 @@ class Engine:
             self.state[key] = SeriesState(
                 pending_since=inc["started_at"], last_seen=now, firing=True, severity=inc["severity"],
                 incident_id=inc["id"], last_notified=inc["last_notified"] or inc["started_at"], value=inc["last_value"],
+                # rebuild what the messages need (rule name, series, unit...) so a "resolved" after a restart
+                # reads like any other
+                signal=Signal(
+                    source_id=inc["source_id"], rule_name=inc["rule_name"], series=inc["series"],
+                    series_key=inc["series_key"], severity=inc["severity"], value=inc["last_value"],
+                    threshold=inc["threshold"], unit=inc["unit"], summary=inc["summary"], labels=inc["labels"],
+                    server=inc["server"]),
             )
 
     # ---------- notification ----------
@@ -179,7 +187,7 @@ class Engine:
 
     async def _resolve(self, key: Key, st: SeriesState, sig: Signal, now: float) -> None:
         if st.firing and st.incident_id:
-            self.store.resolve_incident(st.incident_id, now, sig.value)
+            self.store.resolve_incident(st.incident_id, now, sig.value)   # keeps the incident's last_value if None
             # keep the rule's identity from the firing signal but report the recovered value
             base = st.signal or sig
             sig_for_event = Signal(**{**base.__dict__, "value": sig.value})
@@ -189,7 +197,9 @@ class Engine:
 
     def _healthy(self, key: Key, st: SeriesState, fallback_name: str = "") -> Signal:
         base = st.signal or Signal(key[0], fallback_name or key[0], "", key[2], None, server=key[1])
-        return Signal(**{**base.__dict__, "severity": None})
+        # the series is gone, so there is no current value to report (the last firing value would read as
+        # "Now: <a value over the threshold>")
+        return Signal(**{**base.__dict__, "severity": None, "value": None})
 
     # ---------- evaluation ----------
     def drop_rule(self, rule_id: str, now: float | None = None, server: str | None = None) -> None:
@@ -221,8 +231,13 @@ class Engine:
                 if rule["servers"] and server_id not in rule["servers"]:
                     self.drop_rule(rule["id"], now, server_id)  # scope changed while incidents were open
                     continue
+                client = prom if rule.get("datasource", "prometheus") == "prometheus" else self.lokis.get(server_id)
+                if client is None:
+                    # a log rule on a server without Loki: nothing to evaluate there (and nothing left open)
+                    self.drop_rule(rule["id"], now, server_id)
+                    continue
                 try:
-                    samples = await prom.instant(rule["expr"])
+                    samples = await client.instant(rule["expr"])
                 except PromError as e:
                     self.rule_errors.setdefault(rule["id"], {})[server_id] = str(e)
                     continue
@@ -242,10 +257,13 @@ class Engine:
                         series_key=skey, severity=sev, value=s["value"], threshold=thr, unit=rule["unit"],
                         summary=rule["summary"], for_seconds=rule["for_seconds"], labels=s["labels"],
                         server=server_id), now)
-                # series that vanished (container removed, exporter label change) resolve after a grace period
+                # Series that vanished (container removed, exporter label change) resolve after a grace period.
+                # For a log rule a missing series just means "no matching lines", i.e. healthy: resolve at once
+                # (a Loki outage raises an error above instead, which never resolves anything).
+                grace = 0 if rule.get("datasource") == "loki" else self.cfg.alerts.absent_grace
                 for k in [k for k in self.state if k[0] == rule["id"] and k[1] == server_id and k not in seen]:
                     st = self.state[k]
-                    if now - st.last_seen >= self.cfg.alerts.absent_grace:
+                    if now - st.last_seen >= grace:
                         await self._resolve(k, st, self._healthy(k, st, rule["name"]), now)
         self.last_eval = now
 

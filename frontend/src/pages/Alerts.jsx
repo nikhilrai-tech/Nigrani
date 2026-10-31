@@ -5,7 +5,7 @@ import { Badge, Card, Empty, ErrorNote, Modal, Seg, SevBadge, Toggle } from '../
 import { fmtAgo, fmtDateTime, fmtDuration, fmtValue } from '../format';
 
 const UNITS = ['short', 'percent', 'bytes', 'seconds', 'ms', 'days', 'rps'];
-const BLANK = { name: '', expr: '', direction: 'above', warn: '', crit: '', for_seconds: 300, unit: 'short', summary: '', enabled: true };
+const BLANK = { name: '', expr: '', datasource: 'prometheus', direction: 'above', warn: '', crit: '', for_seconds: 300, unit: 'short', summary: '', enabled: true };
 const num = (v) => (v === '' || v == null ? null : Number(v));
 const splitIds = (t) => t.split(',').map((x) => x.trim()).filter(Boolean);
 
@@ -52,9 +52,23 @@ function RuleModal({ rule, onClose, onSaved }) {
     </>}>
       <label className="f" htmlFor="r-name">Name</label>
       <input id="r-name" type="text" value={f.name} onChange={set('name')} autoFocus />
-      <label className="f" htmlFor="r-expr">PromQL expression</label>
-      <textarea id="r-expr" value={f.expr} onChange={set('expr')} spellCheck={false} />
-      <div className="hint">Returns one value per series; each series alerts on its own (e.g. per container or mountpoint).</div>
+      {(servers.some((s) => s.logs) || f.datasource === 'loki') && (
+        <>
+          <label className="f" htmlFor="r-ds">Data source</label>
+          <select id="r-ds" value={f.datasource} onChange={set('datasource')}>
+            <option value="prometheus">Prometheus (metrics, PromQL)</option>
+            <option value="loki">Loki (logs, LogQL)</option>
+          </select>
+        </>
+      )}
+      <label className="f" htmlFor="r-expr">{f.datasource === 'loki' ? 'LogQL metric expression' : 'PromQL expression'}</label>
+      <textarea id="r-expr" value={f.expr} onChange={set('expr')} spellCheck={false}
+        placeholder={f.datasource === 'loki' ? 'sum by (container) (count_over_time({container=~".+"} |~ "(?i)error" [5m]))' : ''} />
+      <div className="hint">
+        {f.datasource === 'loki'
+          ? 'Must return numbers, so wrap a log selector in count_over_time(...) or rate(...). One alert per resulting series.'
+          : 'Returns one value per series; each series alerts on its own (e.g. per container or mountpoint).'}
+      </div>
       <div className="row wrap" style={{ alignItems: 'flex-start' }}>
         <div style={{ flex: 1, minWidth: 110 }}><label className="f" htmlFor="r-dir">Alert when</label>
           <select id="r-dir" value={f.direction} onChange={set('direction')}><option value="above">value is above</option><option value="below">value is below</option></select></div>
@@ -204,7 +218,7 @@ function Rules() {
         <tbody>{(data || []).map((r) => (
           <tr key={r.id}>
             <td><Toggle checked={r.enabled} onChange={(v) => toggle(r, v)} label={`Enable ${r.name}`} /></td>
-            <td><b>{r.name}</b> {r.servers?.length > 0 && <Badge kind="info">only: {r.servers.join(', ')}</Badge>}<div className="mono muted" style={{ maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.expr}>{r.expr}</div></td>
+            <td><b>{r.name}</b> {r.datasource === 'loki' && <Badge>logs</Badge>} {r.servers?.length > 0 && <Badge kind="info">only: {r.servers.join(', ')}</Badge>}<div className="mono muted" style={{ maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.expr}>{r.expr}</div></td>
             <td>{thr(r)}</td>
             <td>{fmtDuration(r.for_seconds)}</td>
             <td>{r.error ? <Badge kind="warn" icon="alert">query error</Badge> : r.enabled ? <Badge kind="ok" icon="check">evaluating</Badge> : <Badge>disabled</Badge>}{r.error && <div className="muted" style={{ fontSize: 12 }}>{r.error.slice(0, 80)}</div>}</td>

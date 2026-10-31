@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Log-based alert rules: `datasource: loki` evaluates a LogQL metric query against a server's Loki. New `logs` preset
+  with an "Error spike in logs" rule; the rule editor can choose the data source and preview LogQL.
+
+### Fixed
+- A "resolved" message sent after a restart now keeps the rule name and series, and a resolved series that no longer
+  exists no longer shows its last firing value as "Now".
+
 ## [0.1.0] - 2026-11-01
 
 First public release.

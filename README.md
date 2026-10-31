@@ -127,6 +127,7 @@ Nigrani only reads from Prometheus/Loki. Which pages light up depends on which e
 | `rds` | [yet-another-cloudwatch-exporter](https://github.com/prometheus-community/yet-another-cloudwatch-exporter) | AWS RDS page, CPU/storage alerts |
 | `mqtt` | a Mosquitto exporter | MQTT page |
 | `celery` | [celery-exporter](https://github.com/danihodovic/celery-exporter) | Celery page, queue/worker alerts |
+| `logs` | Loki (`datasources.loki`) | A log-based alert: error spike per container |
 
 A page whose metrics are missing shows which exporter to add, instead of empty charts.
 
@@ -184,6 +185,23 @@ rules:
     for_seconds: 300      # must stay breached for 5 minutes before alerting
     direction: above      # or "below"
 ```
+
+**Log-based rules.** A rule can read from Loki instead of Prometheus (`datasource: loki`). The expression is a LogQL
+*metric* query, so it returns numbers and goes through the same thresholds, de-duplication, silences and channels:
+
+```yaml
+rules:
+  - id: payment-errors
+    name: Payment errors
+    datasource: loki
+    expr: sum(count_over_time({container="api"} |= "PaymentError" [5m]))
+    crit: 10
+    for_seconds: 0
+```
+
+Servers without Loki skip log rules. The rule editor offers the data source when any server has Loki.
+For a log rule, a series that disappears means "no matching lines", so the alert resolves on the next cycle instead of
+after `alerts.absent_grace`. If Loki itself is down the rule shows a query error and nothing is resolved.
 
 Behaviour worth knowing:
 

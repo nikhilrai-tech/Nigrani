@@ -105,6 +105,22 @@ def test_restart_does_not_renotify(cfg, store, prom):
     assert n.kinds == ["firing"]
 
 
+def test_resolved_message_after_a_restart_keeps_rule_and_series(cfg, store, prom):
+    clock = [0.0]
+    eng, n = make(cfg, store, prom, clock)
+    prom.values["q"] = [({"name": "api"}, 95.0)]
+    run(eng.evaluate_rules(clock[0]))
+    clock[0] += 301
+    run(eng.evaluate_rules(clock[0]))
+    eng2 = Engine(store, prom, n, cfg, clock=lambda: clock[0])      # simulated restart
+    prom.values["q"] = [({"name": "api"}, 10.0)]
+    clock[0] += 30
+    run(eng2.evaluate_rules(clock[0]))
+    resolved = n.events[-1]
+    assert resolved["kind"] == "resolved"
+    assert "High CPU" in resolved["title"] and "api" in resolved["title"] and "Now: 10.0%" in resolved["body"]
+
+
 def test_vanished_series_resolves_after_grace(cfg, store, prom):
     clock = [0.0]
     eng, n = make(cfg, store, prom, clock)

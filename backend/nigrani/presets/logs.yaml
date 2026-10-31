@@ -1,0 +1,12 @@
+# Needs: Loki (datasources.loki) fed by Promtail/Alloy with a `container` label (datasources.loki_container_label).
+# Rules in this preset are LogQL metric queries evaluated against Loki; servers without Loki skip them.
+rules:
+  - id: log-errors
+    name: Error spike in logs
+    datasource: loki
+    expr: sum by (container) (count_over_time({container=~".+"} |~ "(?i)(error|exception|traceback|critical|fatal)" [5m]))
+    warn: 50
+    crit: 200
+    for_seconds: 120
+    unit: short
+    summary: This container logged many error lines in the last 5 minutes. Open the Logs page filtered to it.
