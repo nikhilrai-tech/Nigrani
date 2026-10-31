@@ -8,6 +8,9 @@ RUN npm run build
 
 # ---- runtime ----
 FROM python:3.12-slim
+LABEL org.opencontainers.image.source="https://github.com/nikhilrai-tech/Nigrani" \
+      org.opencontainers.image.description="Self-hosted monitoring and alerting dashboard on top of Prometheus and Loki" \
+      org.opencontainers.image.licenses="MIT"
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     NIGRANI_STATIC_DIR=/app/static NIGRANI_DATA_DIR=/data
 WORKDIR /app

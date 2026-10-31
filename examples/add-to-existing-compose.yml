@@ -11,7 +11,7 @@
 
 services:
   nigrani:
-    image: ghcr.io/<your-org>/nigrani:latest      # or `build: ../nigrani` while developing
+    image: ghcr.io/nikhilrai-tech/nigrani:latest   # published on each release; until then `build:` a clone of the repo
     restart: unless-stopped
     ports:
       - "8080:8080"                             # put it behind your reverse proxy / VPN; see "Security" in the README
