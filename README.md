@@ -133,8 +133,7 @@ A page whose metrics are missing shows which exporter to add, instead of empty c
 
 The `django`, `redis`, `postgres`, `mqtt` and `celery` presets are checked against the real exporters in
 [dev/lab](dev/lab) (versions listed there); `core` is checked against node-exporter + cAdvisor.
-`rds` is **not** verified yet (it needs a real AWS account). Logs need Loki with a
-container-name label (see [deploy/promtail.yml](deploy/promtail.yml)).
+Logs need Loki with a container-name label (see [deploy/promtail.yml](deploy/promtail.yml)).
 
 > **Docker 29+ and cAdvisor:** cAdvisor older than v0.53 can't talk to the Docker 29 API, so container names are
 > missing and the Containers page stays empty. Use `ghcr.io/google/cadvisor:v0.53.0` or newer.

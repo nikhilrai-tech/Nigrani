@@ -23,7 +23,5 @@ Last verified (2026-11-01):
 | `celery` | danihodovic/celery-exporter, Celery 5.6 |
 | `core` | node-exporter + cAdvisor (see `docker-compose.full.yml` in the repo root) |
 
-Not covered: `rds` (needs a real AWS account and yet-another-cloudwatch-exporter).
-
 `verify.py` is expected to report `NO DATA` for the `core` rules here because the lab has no node-exporter or
 cAdvisor. Anything else that is empty means an exporter renamed a metric and the preset needs updating.

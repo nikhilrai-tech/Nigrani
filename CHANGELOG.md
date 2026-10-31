@@ -30,8 +30,3 @@ First public release.
 ### Fixed
 - A "resolved" message sent after a restart keeps the rule name and series, and a series that no longer exists
   no longer shows its last firing value as "Now".
-
-### Known gaps
-- The `rds` preset is not verified against a real AWS account.
-- The `arm64` image is built by the release workflow but has not been run on real arm64 hardware.
-- Delivery to Slack, Teams, Telegram, email, WhatsApp and Discord has been unit-tested but not against live services.
