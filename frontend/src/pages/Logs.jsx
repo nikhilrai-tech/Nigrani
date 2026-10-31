@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api, useApi } from '../api';
 import { Card, ErrorNote, Seg } from '../components/ui';
+import { buildLogRule } from '../logrule';
+import { RuleModal } from './Alerts';
 import { useApp } from '../ctx';
 
 const clock = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour12: false });
@@ -14,7 +16,8 @@ export default function Logs({ embedded = false, container: fixed = '' }) {
   const [q, setQ] = useState('');
   const [term, setTerm] = useState('');
   const [live, setLive] = useState(embedded ? false : true);
-  const [state, setState] = useState({ rows: [], error: null, loading: true });
+  const [state, setState] = useState({ rows: [], error: null, loading: true, query: '', label: 'container' });
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => { const t = setTimeout(() => setTerm(q), 350); return () => clearTimeout(t); }, [q]);
 
@@ -25,7 +28,7 @@ export default function Logs({ embedded = false, container: fixed = '' }) {
       if (level !== 'all') p.set('level', level);
       try {
         const r = await api(`/logs?${p}`);
-        if (alive) setState({ rows: r.rows, error: null, loading: false });
+        if (alive) setState({ rows: r.rows, error: null, loading: false, query: r.query, label: r.label });
       } catch (e) { if (alive) setState((s) => ({ ...s, error: e.message, loading: false })); }
     };
     load();
@@ -44,7 +47,8 @@ export default function Logs({ embedded = false, container: fixed = '' }) {
           </select>
           <Seg value={level} options={['all', 'warn', 'error']} onChange={setLevel} />
           <input type="text" placeholder="Search text…" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 280 }} aria-label="Search logs" />
-          <label className="row" style={{ marginLeft: 'auto', gap: 6 }}><input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} /> Live (5s)</label>
+          <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={() => setCreating(true)} disabled={!state.query} title="Alert when this search matches too many lines">Create alert from this search</button>
+          <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} /> Live (5s)</label>
         </div>
       )}
       <ErrorNote>{state.error}</ErrorNote>
@@ -60,5 +64,17 @@ export default function Logs({ embedded = false, container: fixed = '' }) {
       </div>
     </>
   );
-  return embedded ? body : <Card>{body}</Card>;
+  if (embedded) return body;
+  return (
+    <>
+      <Card>{body}</Card>
+      {creating && (
+        <RuleModal
+          initial={buildLogRule({ query: state.query, label: state.label, container, level, text: term })}
+          onClose={() => setCreating(false)}
+          onSaved={() => { setCreating(false); window.location.hash = '/alerts/rules'; }}
+        />
+      )}
+    </>
+  );
 }

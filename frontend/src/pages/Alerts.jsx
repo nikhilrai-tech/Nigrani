@@ -20,9 +20,9 @@ function ServerTag({ id }) {
   return multi ? <Badge kind="info">{name(id)}</Badge> : null;
 }
 
-function RuleModal({ rule, onClose, onSaved }) {
+export function RuleModal({ rule, initial, onClose, onSaved }) {
   const { servers, multi } = useApp();
-  const [f, setF] = useState(rule ? { ...rule, warn: rule.warn ?? '', crit: rule.crit ?? '' } : BLANK);
+  const [f, setF] = useState(rule ? { ...rule, warn: rule.warn ?? '', crit: rule.crit ?? '' } : { ...BLANK, ...initial });
   const [scope, setScope] = useState((rule?.servers || []).join(', '));
   const [err, setErr] = useState(null);
   const [preview, setPreview] = useState(null);

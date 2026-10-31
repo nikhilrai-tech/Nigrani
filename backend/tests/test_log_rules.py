@@ -1,5 +1,6 @@
 import asyncio
 
+import httpx
 from fastapi.testclient import TestClient
 
 from conftest import FakeProm, RecordingNotifier
@@ -131,3 +132,24 @@ def test_log_outage_does_not_resolve_anything(tmp_path, store):
     loki.up = False                                        # Loki down: unknown, not healthy
     run(eng.evaluate_rules(1030.0))
     assert n.kinds == ["firing"] and len(store.open_incidents()) == 1
+
+
+def test_logs_endpoint_returns_the_logql_and_label_it_ran(tmp_path, monkeypatch):
+    """The UI turns the current search into a rule from exactly this query + label."""
+    cfg = make_cfg(tmp_path, "auth: {password: pw}\ndatasources: {loki: 'http://loki:3100', loki_container_label: service}\n")
+    seen = {}
+
+    def handler(req):
+        seen["params"] = dict(req.url.params)
+        return httpx.Response(200, json={"data": {"result": [
+            {"stream": {"service": "api"}, "values": [["1700000000000000000", "ERROR boom"]]}]}})
+
+    with TestClient(create_app(cfg, prom=FakeProm())) as c:
+        real = httpx.AsyncClient
+        monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+        c.post("/api/login", json={"username": "admin", "password": "pw"})
+        r = c.get("/api/logs?container=api&level=error&q=boom").json()
+    assert r["label"] == "service"
+    assert r["query"].startswith('{service="api"}') and "|~" in r["query"] and '|= "boom"' in r["query"]
+    assert seen["params"]["query"] == r["query"]
+    assert r["rows"][0]["line"] == "ERROR boom" and r["rows"][0]["container"] == "api"

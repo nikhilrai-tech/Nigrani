@@ -5,6 +5,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Logs page: "Create alert from this search" turns the current container / level / text filter into a log-based alert
+  rule, with the rule editor prefilled and a live preview.
+
 ## [0.1.0] - 2026-11-01
 
 First public release.
