@@ -5,14 +5,6 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-### Added
-- Log-based alert rules: `datasource: loki` evaluates a LogQL metric query against a server's Loki. New `logs` preset
-  with an "Error spike in logs" rule; the rule editor can choose the data source and preview LogQL.
-
-### Fixed
-- A "resolved" message sent after a restart now keeps the rule name and series, and a resolved series that no longer
-  exists no longer shows its last firing value as "Now".
-
 ## [0.1.0] - 2026-11-01
 
 First public release.
@@ -29,8 +21,17 @@ First public release.
 - Multiple servers (for example production and staging) in one dashboard, with an all-servers view and
   per-server rule/channel/silence scoping.
 - Login, rate-limited, signed cookie sessions, CSRF protection and security headers.
-- `dev/lab`: real exporters used to verify the presets.
+- Log-based alert rules: `datasource: loki` evaluates a LogQL metric query against a server's Loki. New `logs` preset
+  with an "Error spike in logs" rule; the rule editor can choose the data source and preview LogQL.
+- `dev/lab`: real exporters used to verify the presets (django, redis, postgres, mqtt, celery).
+- GitHub deploy markers ignore pull-request and Dependabot runs.
+- Release automation: a `vX.Y.Z` tag builds and publishes a multi-arch image to `ghcr.io/nikhilrai-tech/nigrani`.
+
+### Fixed
+- A "resolved" message sent after a restart keeps the rule name and series, and a series that no longer exists
+  no longer shows its last firing value as "Now".
 
 ### Known gaps
 - The `rds` preset is not verified against a real AWS account.
+- The `arm64` image is built by the release workflow but has not been run on real arm64 hardware.
 - Delivery to Slack, Teams, Telegram, email, WhatsApp and Discord has been unit-tested but not against live services.
