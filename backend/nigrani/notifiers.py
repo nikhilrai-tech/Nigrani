@@ -20,6 +20,7 @@ import httpx
 from .config import expand_env
 from .format import SEV_COLOR
 from .store import Store
+from .templates import apply as apply_template
 
 log = logging.getLogger("nigrani.notify")
 SEV_RANK = {"info": 0, "warning": 1, "critical": 2}
@@ -209,6 +210,7 @@ class Notifier:
         sender = SENDERS.get(ch["type"])
         if not sender:
             return f"unknown channel type {ch['type']}"
+        ev = apply_template(ch, ev)
         settings = _s(ch["settings"])
         err: str | None = None
         for attempt in range(3):

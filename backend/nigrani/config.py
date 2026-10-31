@@ -10,6 +10,8 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from .templates import validate as validate_templates
+
 PRESET_DIR = Path(__file__).parent / "presets"
 _ENV = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
 
@@ -153,6 +155,15 @@ class ChannelCfg(_M):
     quiet_hours: list[int] | None = None  # [start_hour, end_hour] local; critical still sent
     enabled: bool = True
     servers: list[str] = Field(default_factory=list)  # empty = alerts from every server
+    title_template: str | None = None  # e.g. "{emoji} {rule} on {server}: {value}"; see templates.PLACEHOLDERS
+    body_template: str | None = None
+
+    @model_validator(mode="after")
+    def _templates_ok(self) -> "ChannelCfg":
+        err = validate_templates(self.title_template, self.body_template)
+        if err:
+            raise ValueError(f"channel '{self.id}': {err}")
+        return self
 
 
 class CheckCfg(_M):

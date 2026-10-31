@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS rules (
 CREATE TABLE IF NOT EXISTS channels (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, settings TEXT NOT NULL DEFAULT '{}',
   min_severity TEXT NOT NULL DEFAULT 'warning', quiet_start INTEGER, quiet_end INTEGER,
-  enabled INTEGER NOT NULL DEFAULT 1, last_error TEXT, last_sent_at REAL, servers TEXT NOT NULL DEFAULT '[]'
+  enabled INTEGER NOT NULL DEFAULT 1, last_error TEXT, last_sent_at REAL, servers TEXT NOT NULL DEFAULT '[]',
+  title_template TEXT, body_template TEXT
 );
 CREATE TABLE IF NOT EXISTS incidents (
   id INTEGER PRIMARY KEY AUTOINCREMENT, source_id TEXT NOT NULL, series_key TEXT NOT NULL,
@@ -65,7 +66,7 @@ class Store:
         """Add columns introduced after the first release to databases created by older versions."""
         wanted = {
             "rules": [("servers", "TEXT NOT NULL DEFAULT '[]'"), ("datasource", "TEXT NOT NULL DEFAULT 'prometheus'")],
-            "channels": [("servers", "TEXT NOT NULL DEFAULT '[]'")],
+            "channels": [("servers", "TEXT NOT NULL DEFAULT '[]'"), ("title_template", "TEXT"), ("body_template", "TEXT")],
             "incidents": [("server", "TEXT NOT NULL DEFAULT 'default'")],
             "silences": [("server", "TEXT")],
         }
@@ -139,20 +140,23 @@ class Store:
     def seed_channel(self, c: dict[str, Any]) -> None:
         qh = c.get("quiet_hours") or [None, None]
         self._x(
-            "INSERT OR IGNORE INTO channels(id,name,type,settings,min_severity,quiet_start,quiet_end,enabled,servers)"
-            " VALUES(?,?,?,?,?,?,?,?,?)",
+            "INSERT OR IGNORE INTO channels(id,name,type,settings,min_severity,quiet_start,quiet_end,enabled,servers,"
+            "title_template,body_template) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
             (c["id"], c["name"], c["type"], json.dumps(c.get("settings", {})), c.get("min_severity", "warning"),
-             qh[0], qh[1], int(c.get("enabled", True)), json.dumps(c.get("servers") or [])),
+             qh[0], qh[1], int(c.get("enabled", True)), json.dumps(c.get("servers") or []),
+             c.get("title_template") or None, c.get("body_template") or None),
         )
 
     def save_channel(self, c: dict[str, Any]) -> dict[str, Any]:
         self._x(
-            "INSERT INTO channels(id,name,type,settings,min_severity,quiet_start,quiet_end,enabled,servers)"
-            " VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, type=excluded.type,"
-            " settings=excluded.settings, min_severity=excluded.min_severity, quiet_start=excluded.quiet_start,"
-            " quiet_end=excluded.quiet_end, enabled=excluded.enabled, servers=excluded.servers",
+            "INSERT INTO channels(id,name,type,settings,min_severity,quiet_start,quiet_end,enabled,servers,"
+            "title_template,body_template) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,"
+            " type=excluded.type, settings=excluded.settings, min_severity=excluded.min_severity,"
+            " quiet_start=excluded.quiet_start, quiet_end=excluded.quiet_end, enabled=excluded.enabled,"
+            " servers=excluded.servers, title_template=excluded.title_template, body_template=excluded.body_template",
             (c["id"], c["name"], c["type"], json.dumps(c.get("settings", {})), c.get("min_severity", "warning"),
-             c.get("quiet_start"), c.get("quiet_end"), int(c.get("enabled", True)), json.dumps(c.get("servers") or [])),
+             c.get("quiet_start"), c.get("quiet_end"), int(c.get("enabled", True)), json.dumps(c.get("servers") or []),
+             c.get("title_template") or None, c.get("body_template") or None),
         )
         return self.get_channel(c["id"])  # type: ignore[return-value]
 

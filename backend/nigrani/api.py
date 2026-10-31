@@ -28,6 +28,7 @@ from .github import GithubDeploys
 from .notifiers import CHANNEL_FIELDS, Notifier, mask_settings
 from .prom import Prom, PromError, PromUnavailable, series_key, series_label
 from .store import Store
+from . import templates as msg_templates
 
 log = logging.getLogger("nigrani.api")
 RANGES = {"15m": 900, "1h": 3600, "3h": 10800, "6h": 21600, "24h": 86400, "7d": 604800}
@@ -87,6 +88,14 @@ class ChannelIn(BaseModel):
     quiet_end: int | None = Field(None, ge=0, le=23)
     enabled: bool = True
     servers: list[str] = []
+    title_template: str | None = None
+    body_template: str | None = None
+
+
+class PreviewIn(BaseModel):
+    title_template: str | None = None
+    body_template: str | None = None
+    kind: Literal["firing", "resolved", "escalated", "reminder"] = "firing"
 
 
 class SilenceIn(BaseModel):
@@ -527,6 +536,9 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
     @secured.post("/channels")
     async def save_channel(c: ChannelIn) -> dict[str, Any]:
         _check_servers(c.servers)
+        bad = msg_templates.validate(c.title_template, c.body_template)
+        if bad:
+            raise HTTPException(422, bad)
         cid = c.id or re.sub(r"[^a-z0-9]+", "-", c.name.lower()).strip("-")[:60] or "channel"
         if not c.id and store.get_channel(cid):
             cid = f"{cid}-{int(time.time()) % 100000}"
@@ -538,6 +550,26 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
                     settings[k] = old["settings"].get(k, "")
         saved = store.save_channel({**c.model_dump(), "id": cid, "settings": settings})
         return _public_channel(saved)
+
+    @secured.get("/message-placeholders")
+    async def message_placeholders() -> list[dict[str, str]]:
+        return [{"name": k, "description": v} for k, v in msg_templates.PLACEHOLDERS.items()]
+
+    @secured.post("/channels/preview")
+    async def preview_message(p: PreviewIn) -> dict[str, Any]:
+        """Render the templates against a sample alert, so they can be checked before saving."""
+        bad = msg_templates.validate(p.title_template, p.body_template)
+        if bad:
+            raise HTTPException(422, bad)
+        now = time.time()
+        multi = len(runtimes) > 1
+        ev = build_event(
+            p.kind, severity="critical", rule_name="High CPU", series="web-1", value=93.4, threshold=90.0,
+            unit="percent", summary="Check which container is busy on the Containers page.", started_at=now - 540,
+            now=now, environment=cfg.app.environment, link=cfg.app.public_url or "https://nigrani.example.com",
+            server=next(iter(runtimes.values())).view.name if multi else "")
+        out = msg_templates.apply({"title_template": p.title_template, "body_template": p.body_template}, ev)
+        return {"title": out["title"], "body": out["body"]}
 
     @secured.delete("/channels/{channel_id}")
     async def delete_channel(channel_id: str) -> dict[str, bool]:

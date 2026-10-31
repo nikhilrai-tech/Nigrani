@@ -1,6 +1,7 @@
 """Human formatting of values and notification events."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 SEV_EMOJI = {"critical": "🔴", "warning": "🟠", "info": "ℹ️", "resolved": "✅"}
@@ -87,7 +88,17 @@ def build_event(
         lines.append(f"Duration: {fmt_duration(now - started_at)}")
     if summary and kind not in ("resolved",):
         lines.append(summary)
+    status = {"firing": "FIRING", "resolved": "RESOLVED", "escalated": "ESCALATED", "reminder": "REMINDER",
+              "test": "TEST"}.get(kind, kind.upper())
+    shown = "resolved" if kind == "resolved" else severity
     return {
+        "status": status,
+        "emoji": SEV_EMOJI.get(shown, ""),
+        "value_text": fmt_value(value, unit) if value is not None else "",
+        "threshold_text": fmt_value(threshold, unit) if threshold is not None else "",
+        "duration": fmt_duration(now - started_at),
+        "summary": summary,
+        "started_text": datetime.fromtimestamp(started_at, timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         "kind": kind,
         "severity": "resolved" if kind == "resolved" else severity,
         "orig_severity": severity,
