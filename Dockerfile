@@ -7,7 +7,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # ---- runtime ----
-FROM python:3.12-slim
+FROM python:3.15-slim
 LABEL org.opencontainers.image.source="https://github.com/nikhilrai-tech/Nigrani" \
       org.opencontainers.image.description="Self-hosted monitoring and alerting dashboard on top of Prometheus and Loki" \
       org.opencontainers.image.licenses="MIT"
