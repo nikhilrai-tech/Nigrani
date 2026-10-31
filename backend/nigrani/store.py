@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS rules (
   direction TEXT NOT NULL DEFAULT 'above', warn REAL, crit REAL,
   for_seconds INTEGER NOT NULL DEFAULT 300, unit TEXT NOT NULL DEFAULT 'short',
   summary TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1,
-  source TEXT NOT NULL DEFAULT 'custom', updated_at REAL, servers TEXT NOT NULL DEFAULT '[]'
+  source TEXT NOT NULL DEFAULT 'custom', updated_at REAL, servers TEXT NOT NULL DEFAULT '[]',
+  datasource TEXT NOT NULL DEFAULT 'prometheus'
 );
 CREATE TABLE IF NOT EXISTS channels (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, settings TEXT NOT NULL DEFAULT '{}',
@@ -63,7 +64,7 @@ class Store:
     def _migrate(self) -> None:
         """Add columns introduced after the first release to databases created by older versions."""
         wanted = {
-            "rules": [("servers", "TEXT NOT NULL DEFAULT '[]'")],
+            "rules": [("servers", "TEXT NOT NULL DEFAULT '[]'"), ("datasource", "TEXT NOT NULL DEFAULT 'prometheus'")],
             "channels": [("servers", "TEXT NOT NULL DEFAULT '[]'")],
             "incidents": [("server", "TEXT NOT NULL DEFAULT 'default'")],
             "silences": [("server", "TEXT")],
@@ -96,23 +97,23 @@ class Store:
     # ---- rules ----
     def seed_rule(self, r: dict[str, Any]) -> None:
         self._x(
-            "INSERT OR IGNORE INTO rules(id,name,expr,direction,warn,crit,for_seconds,unit,summary,enabled,source,updated_at,servers)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT OR IGNORE INTO rules(id,name,expr,direction,warn,crit,for_seconds,unit,summary,enabled,source,updated_at,servers,datasource)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (r["id"], r["name"], r["expr"], r["direction"], r.get("warn"), r.get("crit"), r["for_seconds"],
              r["unit"], r.get("summary", ""), int(r.get("enabled", True)), "preset", time.time(),
-             json.dumps(r.get("servers") or [])),
+             json.dumps(r.get("servers") or []), r.get("datasource", "prometheus")),
         )
 
     def save_rule(self, r: dict[str, Any]) -> dict[str, Any]:
         self._x(
-            "INSERT INTO rules(id,name,expr,direction,warn,crit,for_seconds,unit,summary,enabled,source,updated_at,servers)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, expr=excluded.expr,"
+            "INSERT INTO rules(id,name,expr,direction,warn,crit,for_seconds,unit,summary,enabled,source,updated_at,servers,datasource)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, expr=excluded.expr,"
             " direction=excluded.direction, warn=excluded.warn, crit=excluded.crit, for_seconds=excluded.for_seconds,"
             " unit=excluded.unit, summary=excluded.summary, enabled=excluded.enabled, updated_at=excluded.updated_at,"
-            " servers=excluded.servers",
+            " servers=excluded.servers, datasource=excluded.datasource",
             (r["id"], r["name"], r["expr"], r["direction"], r.get("warn"), r.get("crit"), r["for_seconds"],
              r["unit"], r.get("summary", ""), int(r.get("enabled", True)), r.get("source", "custom"), time.time(),
-             json.dumps(r.get("servers") or [])),
+             json.dumps(r.get("servers") or []), r.get("datasource", "prometheus")),
         )
         return self.get_rule(r["id"])  # type: ignore[return-value]
 

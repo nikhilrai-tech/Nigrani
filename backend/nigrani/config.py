@@ -138,6 +138,7 @@ class RuleCfg(_M):
     summary: str = ""
     enabled: bool = True
     servers: list[str] = Field(default_factory=list)  # empty = evaluate on every server
+    datasource: Literal["prometheus", "loki"] = "prometheus"  # loki = a LogQL metric query (rate/count_over_time)
 
 
 ChannelType = Literal["slack", "teams", "discord", "telegram", "email", "webhook", "whatsapp"]

@@ -25,6 +25,7 @@ datasources:
 #   rds       yet-another-cloudwatch-exporter (AWS/RDS)
 #   mqtt      a Mosquitto exporter
 #   celery    celery-exporter            workers, queue length, failures
+#   logs      Loki (datasources.loki)    error-spike alert per container (LogQL rule)
 presets: [core, django, redis, celery]
 
 # Optional. Containers you consider critical: if one stops, you get a "Container down" alert.

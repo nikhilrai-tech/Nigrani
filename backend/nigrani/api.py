@@ -67,6 +67,7 @@ class RuleIn(BaseModel):
     summary: str = ""
     enabled: bool = True
     servers: list[str] = []
+    datasource: Literal["prometheus", "loki"] = "prometheus"
 
     @field_validator("id")
     @classmethod
@@ -110,7 +111,8 @@ class Runtime:
     github: GithubDeploys
 
 
-def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None) -> FastAPI:
+def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
+               loki: "dict[str, Prom] | None" = None) -> FastAPI:
     allow_no_auth = os.environ.get("NIGRANI_ALLOW_NO_AUTH") == "1"
     if not cfg.auth.password and not allow_no_auth:
         raise ConfigError("auth.password is empty. Set NIGRANI_PASSWORD (NIGRANI_ALLOW_NO_AUTH=1 is for local dev only).")
@@ -124,7 +126,11 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None) -> Fas
     else:
         proms = {v.id: Prom(v.datasources.prometheus, v.datasources.timeout) for v in views}
     notifier = Notifier(store, cfg.app.timezone)
-    engine = Engine(store, proms, notifier, cfg)
+    # Loki answers metric LogQL (rate / count_over_time) in the same shape as Prometheus, under /loki, so the same
+    # client serves log-based alert rules.
+    lokis = loki if loki is not None else {
+        v.id: Prom(v.datasources.loki.rstrip("/") + "/loki", v.datasources.timeout) for v in views if v.datasources.loki}
+    engine = Engine(store, proms, notifier, cfg, lokis=lokis)
     runtimes: dict[str, Runtime] = {
         v.id: Runtime(v, proms[v.id], CheckRunner(cfg, store, engine, v), GithubDeploys(v.github))
         for v in views if v.id in proms
@@ -189,7 +195,7 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None) -> Fas
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-        for p in proms.values():
+        for p in [*proms.values(), *lokis.values()]:
             await p.close()
 
     app = FastAPI(title="Nigrani", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -435,6 +441,8 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None) -> Fas
 
     def _validate_rule(r: RuleIn) -> None:
         _check_servers(r.servers)
+        if r.datasource == "loki" and not lokis:
+            raise HTTPException(422, "no server has Loki configured (datasources.loki), so a log rule can't be evaluated")
         if r.warn is not None and r.crit is not None:
             if (r.direction == "above" and r.warn > r.crit) or (r.direction == "below" and r.warn < r.crit):
                 raise HTTPException(422, "warning threshold must be less severe than critical")
@@ -467,8 +475,11 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None) -> Fas
 
     @secured.post("/rules/test")
     async def test_rule(r: RuleIn, rt: Runtime = Depends(srv)) -> dict[str, Any]:
+        client = rt.prom if r.datasource == "prometheus" else lokis.get(rt.view.id)
+        if client is None:
+            raise HTTPException(400, f"{rt.view.name} has no Loki configured (datasources.loki)")
         try:
-            res = await rt.prom.instant(r.expr)
+            res = await client.instant(r.expr)
         except PromError as e:
             raise _prom_guard(e) from e
         rows = []
