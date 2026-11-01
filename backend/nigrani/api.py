@@ -22,6 +22,7 @@ from .checks import CheckRunner
 from .config import Config, ConfigError, ServerView
 from .containers import _fresh, collect_containers, collect_host, container_signals, forget_container, safe_name
 from . import backup as backup_mod
+from . import grafana as grafana_links
 from .digest import DigestScheduler
 from .engine import Engine, classify
 from .format import build_event
@@ -231,6 +232,7 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
             "default_server": default_id,
             "servers": [{"id": rt.view.id, "name": rt.view.name, "environment": rt.view.environment,
                          "logs": bool(rt.view.datasources.loki), "deploys": rt.github.enabled,
+                         "grafana": bool(rt.view.grafana.url),
                          "checks": bool(rt.view.checks)} for rt in runtimes.values()],
             "features": {"logs": any(rt.view.datasources.loki for rt in runtimes.values()),
                          "deploys": any(rt.github.enabled for rt in runtimes.values()),
@@ -550,6 +552,13 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
             out["deploys"] = [r for r in await rt.github.runs()
                               if r.get("finished_at") and start - 3600 <= r["finished_at"] <= end]
 
+        g = rt.view.grafana
+        out["grafana"] = {
+            "explore": grafana_links.explore_url(g, rule["datasource"], rule["expr"], start, end) if rule else None,
+            "links": grafana_links.dashboard_links(g, "incident", container=cname, server=rt.view.id,
+                                                   rule=inc["rule_name"], series=inc["series"],
+                                                   **{"from": start, "to": end}),
+        }
         out["related"] = [
             {k: i[k] for k in ("id", "rule_name", "series", "severity", "status", "started_at", "resolved_at", "server")}
             for i in store.recent_incidents(200, inc["started_at"] - 900)
@@ -729,6 +738,24 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
             return JSONResponse({**plan.view(), "applied": False}, status_code=422)
         backup_mod.apply_import(store, plan, preset_rule_ids={r.id for r in cfg.rules}, drop_rule=engine.drop_rule)
         return {**plan.view(), "applied": True}
+
+    @secured.get("/grafana-links")
+    async def get_grafana_links(context: Literal["container", "host", "overview", "incident"] = "overview",
+                                container: str = "", expr: str = "", datasource: Literal["prometheus", "loki"] = "prometheus",
+                                minutes: int = Query(60, ge=1, le=10080), rt: Runtime = Depends(srv)) -> dict[str, Any]:
+        """Links into Grafana for a place in the UI. `expr` also returns an Explore link for that query."""
+        if container:
+            try:
+                safe_name(container)
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
+        g, now = rt.view.grafana, time.time()
+        return {
+            "enabled": bool(g.url),
+            "explore": grafana_links.explore_url(g, datasource, expr, now - minutes * 60, now) if expr else None,
+            "links": grafana_links.dashboard_links(g, context, container=container or None, server=rt.view.id,
+                                                   **{"from": now - minutes * 60, "to": now}),
+        }
 
     @secured.get("/checks")
     async def get_checks(rt: Runtime = Depends(srv)) -> list[dict[str, Any]]:

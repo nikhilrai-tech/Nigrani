@@ -5,6 +5,7 @@ import { Badge, Card, Empty, ErrorNote, Icon, Seg, SevBadge } from '../component
 import { useApp } from '../ctx';
 import { fmtAgo, fmtClock, fmtDateTime, fmtDuration, fmtValue } from '../format';
 import { buildTimeline, whatChanged } from '../incident';
+import { ExploreButton } from '../components/Grafana';
 import { AckModal } from './Alerts';
 
 const ICON = { crit: 'alert', warn: 'alert', ok: 'check', info: 'activity', '': 'activity' };
@@ -43,6 +44,13 @@ function Header({ d, reload }) {
             <div key={k}><div className="muted" style={{ fontSize: 12 }}>{k}</div><div style={{ fontWeight: 600 }}>{v}</div></div>
           ))}
       </div>
+      {(d.grafana?.explore || d.grafana?.links?.length > 0) && (
+        <div className="row wrap" style={{ marginTop: 12 }}>
+          <span className="muted">Grafana:</span>
+          <ExploreButton url={d.grafana.explore} label="Explore this query" />
+          {d.grafana.links.map((l) => <ExploreButton key={l.title} url={l.url} label={l.title} />)}
+        </div>
+      )}
       {i.ack_note && <div className="notice" style={{ marginTop: 12 }}>“{i.ack_note}” <span className="muted">— {i.acked_by}</span></div>}
       {acking && <AckModal incident={i} onClose={() => setAcking(false)} onDone={() => { setAcking(false); reload(); }} />}
     </Card>

@@ -205,6 +205,35 @@ class StatusPageCfg(_M):
     title: str = "System status"
 
 
+class DashboardLink(_M):
+    title: str
+    url: str  # absolute, or relative to grafana.url; may use {container} {server} {rule} {series} {from} {to}
+    where: list[Literal["incident", "container", "host", "overview"]] = Field(default_factory=lambda: ["incident"])
+
+    @field_validator("url")
+    @classmethod
+    def _known_placeholders(cls, v: str) -> str:
+        unknown = sorted(set(re.findall(r"\{(\w+)\}", v)) - {"container", "server", "rule", "series", "from", "to"})
+        if unknown:
+            raise ValueError("unknown placeholder(s) " + ", ".join("{" + u + "}" for u in unknown) +
+                             "; available: {container} {server} {rule} {series} {from} {to}")
+        return v
+
+
+class GrafanaCfg(_M):
+    url: str = ""  # e.g. https://grafana.example.com ; empty = no Grafana links anywhere
+    prometheus_datasource: str = ""  # datasource UID, used by "Open in Grafana" for metric queries
+    loki_datasource: str = ""  # datasource UID, used for log queries
+    dashboards: list[DashboardLink] = Field(default_factory=list)
+
+    @field_validator("url")
+    @classmethod
+    def _url(cls, v: str) -> str:
+        if v and not re.match(r"^https?://[^\s]+$", v):
+            raise ValueError("must start with http:// or https://")
+        return v
+
+
 class ServerCfg(_M):
     """One monitored environment (e.g. production, staging). Unset fields fall back to the top-level values."""
     id: str
@@ -214,6 +243,7 @@ class ServerCfg(_M):
     services: list[ServiceCfg] | None = None
     checks: list[CheckCfg] | None = None
     github: GithubCfg | None = None
+    grafana: GrafanaCfg | None = None
 
     @field_validator("id")
     @classmethod
@@ -233,6 +263,7 @@ class ServerView:
     services: list[ServiceCfg]
     checks: list[CheckCfg]
     github: GithubCfg
+    grafana: GrafanaCfg
 
 
 class Config(_M):
@@ -250,6 +281,7 @@ class Config(_M):
     channels: list[ChannelCfg] = Field(default_factory=list)
     checks: list[CheckCfg] = Field(default_factory=list)
     github: GithubCfg = GithubCfg()
+    grafana: GrafanaCfg = GrafanaCfg()
     digest: DigestCfg = DigestCfg()
     alerts: AlertsCfg = AlertsCfg()
     status_page: StatusPageCfg = StatusPageCfg()
@@ -261,7 +293,8 @@ class Config(_M):
         """Without `servers:` there is one implicit server built from the top-level settings."""
         if not self.servers:
             env = self.app.environment
-            return [ServerView("default", env or self.app.name, env, self.datasources, self.services, self.checks, self.github)]
+            return [ServerView("default", env or self.app.name, env, self.datasources, self.services, self.checks,
+                               self.github, self.grafana)]
         return [
             ServerView(
                 s.id, s.name or s.id, s.environment or s.name or s.id,
@@ -269,6 +302,7 @@ class Config(_M):
                 s.services if s.services is not None else self.services,
                 s.checks if s.checks is not None else self.checks,
                 s.github or self.github,
+                s.grafana or self.grafana,
             )
             for s in self.servers
         ]

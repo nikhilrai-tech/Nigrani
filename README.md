@@ -29,6 +29,7 @@ silently stops. Nigrani answers the operational questions directly:
 | **Overview** | Status banner, key tiles with thresholds, CPU/memory trend, active alerts, uptime checks |
 | **Containers** | Every container: status, CPU, memory (vs limit), restarts, uptime, network. Click for charts and logs. Auto-detects stopped containers |
 | **Host** | CPU, memory, load, network, disk I/O, per-filesystem usage with **days-until-full forecast** |
+| **Grafana links** | "Open in Grafana" from an alert, a rule or the Logs page (Explore with the same query and time range), plus links to your own dashboards from the incident, container, host and overview screens |
 | **Service pages** | Traffic (Django), Redis, Postgres, AWS RDS, MQTT, Celery out of the box. Add your own pages in YAML |
 | **Incident page** | Click any alert for everything around it: lifecycle timeline, the metric with thresholds, the container's CPU/memory and logs, deploys and restarts just before it started, and other alerts that fired at the same time ("What changed?") |
 | **Alerts** | Rules editable in the UI (thresholds, duration, PromQL with live preview), silences, and an **incident timeline** showing when each alert started, how long it lasted and what its peak was |
@@ -256,6 +257,29 @@ channels:
 Placeholders: `{emoji}` `{status}` `{severity}` `{rule}` `{series}` `{value}` `{threshold}` `{server}` `{environment}`
 `{duration}` `{summary}` `{link}` `{started_at}` `{kind}` `{acknowledged_by}` `{note}`, plus `{title}` and `{body}` for the default text (so you can
 extend it instead of replacing it). Digests are not templated.
+
+## Grafana links
+
+Already have Grafana dashboards? Nigrani can link to them. It never talks to Grafana; it only builds URLs for your browser.
+
+```yaml
+grafana:
+  url: https://grafana.example.com           # the address your browser uses
+  prometheus_datasource: <datasource UID>    # Connections > Data sources > the UID in the URL
+  loki_datasource: <datasource UID>
+  dashboards:
+    - title: Container dashboard
+      url: /d/abc123/containers?var-container={container}&from={from}&to={to}
+      where: [incident, container]           # incident | container | host | overview
+    - { title: Host, url: /d/xyz789/node-exporter, where: [host, overview] }
+```
+
+- **Open in Grafana** (incident page, rule editor, Logs page) opens Explore (Grafana 10+) with the exact query and,
+  for an incident, the time range around it.
+- **Dashboard links** appear where you list them. Placeholders `{container}` `{server}` `{rule}` `{series}` `{from}`
+  `{to}` (milliseconds) are URL-encoded; a link that needs a value the place doesn't have (a container on the host
+  page) is left out. Relative URLs are joined to `grafana.url`.
+- With `servers:` each server can have its own `grafana:` block.
 
 ## Backup and restore
 

@@ -4,6 +4,7 @@ import Chart from '../components/Chart';
 import { Badge, Card, Drawer, Empty, ErrorNote, Meter } from '../components/ui';
 import { useApp } from '../ctx';
 import { fmtBytes, fmtDuration, fmtValue } from '../format';
+import { DashboardLinks } from '../components/Grafana';
 import Logs from './Logs';
 
 function ContainerDrawer({ c, onClose, onForget }) {
@@ -18,6 +19,7 @@ function ContainerDrawer({ c, onClose, onForget }) {
         <button className="btn sm right" onClick={onClose}>Close</button>
       </div>
       <div className="muted mono" style={{ marginBottom: 12 }}>{c.name}</div>
+      <div style={{ marginBottom: 12 }}><DashboardLinks context="container" container={c.name} /></div>
       <ErrorNote>{m.error}</ErrorNote>
       <div className="stack">
         <Card title="CPU"><Chart series={d ? [{ name: 'CPU', points: d.cpu }] : []} unit="percent" kind="area" height={150} theme={theme} /></Card>

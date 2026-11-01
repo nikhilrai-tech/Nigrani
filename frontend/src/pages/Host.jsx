@@ -2,6 +2,7 @@ import { useApi } from '../api';
 import Chart from '../components/Chart';
 import { Badge, Card, Empty, ErrorNote, Meter } from '../components/ui';
 import { useApp } from '../ctx';
+import { DashboardLinks } from '../components/Grafana';
 import { fmtBytes, fmtDuration, fmtValue } from '../format';
 
 function Stat({ label, value, sub }) {
@@ -19,6 +20,7 @@ export default function Host() {
 
   return (
     <div className="stack">
+      <DashboardLinks context="host" />
       <div className="grid tiles">
         <Stat label="CPU cores" value={s.cores ?? '—'} sub={s.load1 != null ? `load ${s.load1?.toFixed(2)} · ${s.load5?.toFixed(2)} · ${s.load15?.toFixed(2)}` : null} />
         <Stat label="Memory" value={fmtBytes(memUsed)} sub={s.mem_total ? `of ${fmtBytes(s.mem_total)}` : null} />
