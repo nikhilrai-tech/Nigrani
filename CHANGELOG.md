@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-02
+
 ### Added
 - Several users with **roles** (viewer, editor, admin): a Users page for admins, scrypt-hashed passwords, role changes
   and disabling that apply to open sessions within seconds, and an **audit log** of sign-ins and changes.
@@ -21,15 +23,6 @@ All notable changes to this project are documented here. The format follows
 - Grafana links (`grafana:` config): "Open in Grafana" opens Explore with an alert's query and time range, and your own
   dashboards are linked from the incident, container, host and overview screens, with `{container}`, `{from}`, `{to}`
   and other placeholders.
-
-### Fixed
-- **Crash loops were not detected.** The *Container restarting* rule and the Containers page's "restarts" column counted
-  changes of cAdvisor's start time, which Docker's in-place restarts never change. They now count the RestartCount
-  incarnations cAdvisor reports, so a container stuck restarting is reported.
-- Fixes to a preset rule now reach existing installs. Rules you have not edited are updated on startup; edited ones are
-  left alone.
-
-### Added
 - Incident page (`GET /api/incidents/{id}`, `#/incident/<id>`): lifecycle timeline, the rule's metric with thresholds,
   the container's CPU/memory and logs around the incident, deploys, restarts and related alerts, plus a "What changed?"
   summary. Every notification, escalation, acknowledgement, silence and resolution is now recorded per incident.
@@ -43,6 +36,13 @@ All notable changes to this project are documented here. The format follows
   `{rule}`, `{series}`, `{value}`, `{server}`, `{duration}`), validated on save, with a live preview in the channel editor.
 - Logs page: "Create alert from this search" turns the current container / level / text filter into a log-based alert
   rule, with the rule editor prefilled and a live preview.
+
+### Fixed
+- **Crash loops were not detected.** The *Container restarting* rule and the Containers page's "restarts" column counted
+  changes of cAdvisor's start time, which Docker's in-place restarts never change. They now count the RestartCount
+  incarnations cAdvisor reports, so a container stuck restarting is reported.
+- Fixes to a preset rule now reach existing installs. Rules you have not edited are updated on startup; edited ones are
+  left alone.
 
 ## [0.1.0] - 2026-11-01
 
