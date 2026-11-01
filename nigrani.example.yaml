@@ -35,6 +35,7 @@ datasources:
 #   celery    celery-exporter            workers, queue length, failures
 #   logs      Loki (datasources.loki)    error-spike alert per container (LogQL rule)
 #   sentry    Sentry (sentry:)           new-issue and fatal-issue alerts
+#   datadog   Datadog (datadog:)            host CPU, memory and disk from the Datadog Agent
 #   kubernetes Kubernetes (kubernetes:)    crash-looping pods, unready nodes, deployments missing replicas
 #   cloudwatch AWS CloudWatch (cloudwatch:) RDS and EC2 alerts read straight from CloudWatch
 presets: [core, django, redis, celery]
@@ -121,6 +122,12 @@ digest:
 #   ca_file: /config/k8s-ca.crt
 #   verify_tls: true
 #   namespaces: []                               # empty = all
+
+# Datadog metrics as alert rules (datasource: datadog) and its failing monitors. Optional.
+# datadog:
+#   site: datadoghq.com                           # or datadoghq.eu, us3.datadoghq.com ...
+#   api_key: ${DD_API_KEY}
+#   app_key: ${DD_APP_KEY}
 
 alerts:
   eval_interval: 30              # seconds between rule evaluations

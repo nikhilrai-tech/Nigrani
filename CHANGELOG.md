@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Datadog** (`datadog:` config, read-only): a `datadog` data source for alert rules (a Datadog metric query, one alert per
+  series), a Datadog page listing monitors that are Alert, Warn or No Data, a `datadog` preset (host CPU, memory, disk), and
+  the metric charted on the incident page. Any Datadog site.
 - **Kubernetes** (`kubernetes:` config, read-only): a Kubernetes page (nodes, pods, deployments missing replicas, restarts),
   a `kubernetes` data source for alert rules (`crashloop`, `restarts_1h`, `not_ready_minutes`, `pod_failed`,
   `node_not_ready`, `deployment_unavailable`, narrowed with `namespace=` / `pod=`), a `kubernetes` preset, an RBAC

@@ -32,6 +32,7 @@ silently stops. Nigrani answers the operational questions directly:
 | **Sentry** | Unresolved, new and fatal issues on their own page, alert rules over Sentry searches, and the matching issues on an incident's page |
 | **AWS CloudWatch** | Alert rules straight on CloudWatch metrics (RDS, EC2, ELB, SQS, anything), one alert per database or instance, with the metric charted on the incident page. No exporter needed |
 | **Kubernetes** | Nodes, pods and deployments on their own page, and alert rules for crash-looping or failed pods, stuck or restarting pods, unready nodes and deployments missing replicas. Read-only, no agent in the cluster |
+| **Datadog** | Alert rules straight on Datadog metric queries (one alert per host or tag), the metric charted on the incident page, and a page of monitors that are alerting, warning or have no data |
 | **Grafana links** | "Open in Grafana" from an alert, a rule or the Logs page (Explore with the same query and time range), plus links to your own dashboards from the incident, container, host and overview screens |
 | **Service pages** | Traffic (Django), Redis, Postgres, AWS RDS, MQTT, Celery out of the box. Add your own pages in YAML |
 | **Incident page** | Click any alert for everything around it: lifecycle timeline, the metric with thresholds, the container's CPU/memory and logs, deploys and restarts just before it started, and other alerts that fired at the same time ("What changed?") |
@@ -63,6 +64,7 @@ silently stops. Nigrani answers the operational questions directly:
 </p>
 <p>
   <img src="docs/screenshots/kubernetes.png" width="49%" alt="Kubernetes pods and deployments" />
+  <img src="docs/screenshots/datadog.png" width="49%" alt="Datadog monitors" />
 </p>
 <p>
   <img src="docs/screenshots/rule-cloudwatch.png" width="49%" alt="CloudWatch alert rule with live preview" />
@@ -363,6 +365,28 @@ presets: [core, kubernetes]
   adds a rule for each. If the API is unreachable or refuses the token the rule shows why and nothing is raised or
   resolved because of it.
 - With `servers:` each server can point at its own cluster.
+
+## Datadog
+
+Use Datadog as a data source, and see its failing monitors next to everything else. Read-only.
+
+```yaml
+datadog:
+  site: datadoghq.com                 # datadoghq.eu, us3.datadoghq.com, us5.datadoghq.com, ap1.datadoghq.com ...
+  api_key: ${DD_API_KEY}
+  app_key: ${DD_APP_KEY}              # an application key; scopes timeseries_query and monitors_read
+presets: [core, datadog]              # host CPU, memory and disk rules from the Datadog Agent's metrics
+```
+
+- A rule's data source is *datadog* and its expression is a Datadog metric query, for example
+  `avg:system.cpu.user{env:prod} by {host}` (arithmetic works too, `... * 100`). Each series, such as each host in
+  `by {host}`, is its own alert and uses its latest value from the last ten minutes. Datadog's tags become the alert's
+  labels.
+- The **Datadog page** counts monitors by state and lists the ones that are Alert, Warn or No Data, worst first, linking to
+  each in Datadog.
+- The metric is charted on the incident page like any other.
+- If Datadog refuses the keys or is unreachable the rule shows why and nothing is raised or resolved because of it.
+- With `servers:` each server can have its own `datadog:` block (another site or organization).
 
 ## Grafana links
 
