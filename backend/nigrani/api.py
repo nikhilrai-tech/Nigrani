@@ -22,6 +22,7 @@ from .auth import COOKIE, Auth, Identity, make_authorizer
 from .oidc import Oidc, OidcError, new_login
 from .sentry import SORTS as SENTRY_SORTS
 from .sentry import Sentry
+from .azure import Azure
 from .cloudwatch import CloudWatch
 from .datadog import Datadog
 from .kubernetes import Kubernetes
@@ -105,7 +106,7 @@ class Runtime:
 def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
                loki: "dict[str, Prom] | None" = None, sentry: "dict[str, Any] | None" = None,
                cloudwatch: "dict[str, Any] | None" = None, kubernetes: "dict[str, Any] | None" = None,
-               datadog: "dict[str, Any] | None" = None) -> FastAPI:
+               datadog: "dict[str, Any] | None" = None, azure: "dict[str, Any] | None" = None) -> FastAPI:
     allow_no_auth = os.environ.get("NIGRANI_ALLOW_NO_AUTH") == "1"
     if not cfg.auth.password and not allow_no_auth:
         raise ConfigError("auth.password is empty. Set NIGRANI_PASSWORD (NIGRANI_ALLOW_NO_AUTH=1 is for local dev only).")
@@ -127,13 +128,14 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
     clouds = cloudwatch if cloudwatch is not None else {v.id: CloudWatch(v.cloudwatch, v.datasources.timeout) for v in views if v.cloudwatch.enabled}
     kubes = kubernetes if kubernetes is not None else {v.id: Kubernetes(v.kubernetes, v.datasources.timeout) for v in views if v.kubernetes.enabled}
     dogs = datadog if datadog is not None else {v.id: Datadog(v.datadog, v.datasources.timeout) for v in views if v.datadog.enabled}
-    engine = Engine(store, proms, notifier, cfg, lokis=lokis, sentries=sentries, clouds=clouds, kubes=kubes, dogs=dogs)
+    azures = azure if azure is not None else {v.id: Azure(v.azure, v.datasources.timeout) for v in views if v.azure.enabled}
+    engine = Engine(store, proms, notifier, cfg, lokis=lokis, sentries=sentries, clouds=clouds, kubes=kubes, dogs=dogs, azures=azures)
 
     def datasources_available() -> set[str]:
-        return {"prometheus"} | ({"loki"} if lokis else set()) | ({"sentry"} if sentries else set()) | ({"cloudwatch"} if clouds else set()) | ({"kubernetes"} if kubes else set()) | ({"datadog"} if dogs else set())
+        return {"prometheus"} | ({"loki"} if lokis else set()) | ({"sentry"} if sentries else set()) | ({"cloudwatch"} if clouds else set()) | ({"kubernetes"} if kubes else set()) | ({"datadog"} if dogs else set()) | ({"azure"} if azures else set())
 
     def client_for(datasource: str, server_id: str, prom: Any) -> Any:
-        return {"loki": lokis, "sentry": sentries, "cloudwatch": clouds, "kubernetes": kubes, "datadog": dogs}.get(datasource, {server_id: prom}).get(server_id)
+        return {"loki": lokis, "sentry": sentries, "cloudwatch": clouds, "kubernetes": kubes, "datadog": dogs, "azure": azures}.get(datasource, {server_id: prom}).get(server_id)
     runtimes: dict[str, Runtime] = {
         v.id: Runtime(v, proms[v.id], CheckRunner(cfg, store, engine, v), GithubDeploys(v.github))
         for v in views if v.id in proms
@@ -200,7 +202,7 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-        for p in [*proms.values(), *lokis.values(), *sentries.values(), *clouds.values(), *kubes.values(), *dogs.values()]:
+        for p in [*proms.values(), *lokis.values(), *sentries.values(), *clouds.values(), *kubes.values(), *dogs.values(), *azures.values()]:
             await p.close()
 
     app = FastAPI(title="Nigrani", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -290,7 +292,7 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
             "servers": [{"id": rt.view.id, "name": rt.view.name, "environment": rt.view.environment,
                          "logs": bool(rt.view.datasources.loki), "deploys": rt.github.enabled,
                          "grafana": bool(rt.view.grafana.url), "sentry": rt.view.id in sentries, "kubernetes": rt.view.id in kubes, "datadog": rt.view.id in dogs,
-                         "datasources": ["prometheus"] + (["loki"] if rt.view.id in lokis else []) + (["sentry"] if rt.view.id in sentries else []) + (["cloudwatch"] if rt.view.id in clouds else []) + (["kubernetes"] if rt.view.id in kubes else []) + (["datadog"] if rt.view.id in dogs else []),
+                         "datasources": ["prometheus"] + (["loki"] if rt.view.id in lokis else []) + (["sentry"] if rt.view.id in sentries else []) + (["cloudwatch"] if rt.view.id in clouds else []) + (["kubernetes"] if rt.view.id in kubes else []) + (["datadog"] if rt.view.id in dogs else []) + (["azure"] if rt.view.id in azures else []),
                          "checks": bool(rt.view.checks)} for rt in runtimes.values()],
             "features": {"logs": any(rt.view.datasources.loki for rt in runtimes.values()),
                          "deploys": any(rt.github.enabled for rt in runtimes.values()),

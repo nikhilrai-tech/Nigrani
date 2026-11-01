@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Azure Monitor** (`azure:` config, read-only): an `azure` data source for alert rules (`Microsoft.Compute/virtualMachines
+  "Percentage CPU" aggregation=Maximum`), one alert per resource of a type, an `azure` preset (VM, PostgreSQL, SQL,
+  App Service plan), and the metric charted on the incident page. Entra ID service principal sign-in; sovereign clouds
+  supported.
 - **Datadog** (`datadog:` config, read-only): a `datadog` data source for alert rules (a Datadog metric query, one alert per
   series), a Datadog page listing monitors that are Alert, Warn or No Data, a `datadog` preset (host CPU, memory, disk), and
   the metric charted on the incident page. Any Datadog site.

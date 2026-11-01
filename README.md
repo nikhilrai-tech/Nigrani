@@ -33,6 +33,7 @@ silently stops. Nigrani answers the operational questions directly:
 | **AWS CloudWatch** | Alert rules straight on CloudWatch metrics (RDS, EC2, ELB, SQS, anything), one alert per database or instance, with the metric charted on the incident page. No exporter needed |
 | **Kubernetes** | Nodes, pods and deployments on their own page, and alert rules for crash-looping or failed pods, stuck or restarting pods, unready nodes and deployments missing replicas. Read-only, no agent in the cluster |
 | **Datadog** | Alert rules straight on Datadog metric queries (one alert per host or tag), the metric charted on the incident page, and a page of monitors that are alerting, warning or have no data |
+| **Azure Monitor** | Alert rules straight on Azure Monitor metrics (VMs, PostgreSQL, SQL, App Service...), one alert per resource, with the metric charted on the incident page |
 | **Grafana links** | "Open in Grafana" from an alert, a rule or the Logs page (Explore with the same query and time range), plus links to your own dashboards from the incident, container, host and overview screens |
 | **Service pages** | Traffic (Django), Redis, Postgres, AWS RDS, MQTT, Celery out of the box. Add your own pages in YAML |
 | **Incident page** | Click any alert for everything around it: lifecycle timeline, the metric with thresholds, the container's CPU/memory and logs, deploys and restarts just before it started, and other alerts that fired at the same time ("What changed?") |
@@ -387,6 +388,43 @@ presets: [core, datadog]              # host CPU, memory and disk rules from the
 - The metric is charted on the incident page like any other.
 - If Datadog refuses the keys or is unreachable the rule shows why and nothing is raised or resolved because of it.
 - With `servers:` each server can have its own `datadog:` block (another site or organization).
+
+## Azure Monitor
+
+Alert on Azure metrics without an exporter. Nigrani signs in as a Microsoft Entra ID service principal and reads metrics
+(read-only).
+
+```yaml
+azure:
+  tenant_id: ${AZURE_TENANT_ID}
+  client_id: ${AZURE_CLIENT_ID}
+  client_secret: ${AZURE_CLIENT_SECRET}      # the secret's value, not its id
+  subscription_id: ${AZURE_SUBSCRIPTION_ID}
+  resource_groups: []                        # empty = the whole subscription
+presets: [core, azure]                       # VM, PostgreSQL, SQL and App Service plan rules
+```
+
+Create the service principal and let it read metrics (it needs nothing else):
+
+```bash
+az ad sp create-for-rbac --name nigrani --role "Monitoring Reader" --scopes /subscriptions/<subscription id>
+```
+
+A rule's data source is *azure* and its expression names a resource type and a metric. It covers every resource of that
+type, each with its own alert:
+
+```
+Microsoft.DBforPostgreSQL/flexibleServers cpu_percent aggregation=Maximum interval=PT5M
+Microsoft.Compute/virtualMachines "Percentage CPU" resourcegroup=prod-rg resource=web-*
+```
+
+- Quote a metric name that has spaces. `aggregation=` is Average (default), Minimum, Maximum, Total or Count;
+  `interval=` is PT1M, PT5M, PT15M, PT30M, PT1H, PT6H, PT12H or P1D; `resourcegroup=` and `resource=` (a glob) narrow
+  the set. At most 50 resources per rule.
+- The value is the latest datapoint. Metric names are the ones in the Azure portal's metric picker (or
+  `az monitor metrics list-definitions`).
+- If Azure refuses the credentials or is unreachable the rule shows why and nothing is raised or resolved because of it.
+- Sovereign clouds: set `authority_url` and `management_url`. With `servers:` each server can have its own `azure:` block.
 
 ## Grafana links
 

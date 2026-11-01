@@ -162,7 +162,7 @@ class RuleCfg(_M):
     summary: str = ""
     enabled: bool = True
     servers: list[str] = Field(default_factory=list)  # empty = evaluate on every server
-    datasource: Literal["prometheus", "loki", "sentry", "cloudwatch", "kubernetes", "datadog"] = "prometheus"  # loki: LogQL metric query; sentry: a Sentry search
+    datasource: Literal["prometheus", "loki", "sentry", "cloudwatch", "kubernetes", "datadog", "azure"] = "prometheus"  # loki: LogQL metric query; sentry: a Sentry search
 
 
 ChannelType = Literal["slack", "teams", "discord", "telegram", "email", "webhook", "whatsapp"]
@@ -225,6 +225,28 @@ class AlertsCfg(_M):
 class StatusPageCfg(_M):
     enabled: bool = False
     title: str = "System status"
+
+
+class AzureCfg(_M):
+    """Azure Monitor metrics through a Microsoft Entra ID service principal that has the Monitoring Reader role."""
+    tenant_id: str = ""
+    client_id: str = ""
+    client_secret: str = ""
+    subscription_id: str = ""
+    resource_groups: list[str] = Field(default_factory=list)  # empty = the whole subscription
+    authority_url: str = "https://login.microsoftonline.com"  # sovereign clouds differ
+    management_url: str = "https://management.azure.com"
+
+    @field_validator("authority_url", "management_url")
+    @classmethod
+    def _url(cls, v: str) -> str:
+        if not re.match(r"^https?://[^\s]+$", v):
+            raise ValueError("must start with http:// or https://")
+        return v.rstrip("/")
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.tenant_id and self.client_id and self.client_secret and self.subscription_id)
 
 
 class DatadogCfg(_M):
@@ -362,6 +384,7 @@ class ServerCfg(_M):
     cloudwatch: CloudWatchCfg | None = None
     kubernetes: KubernetesCfg | None = None
     datadog: DatadogCfg | None = None
+    azure: AzureCfg | None = None
 
     @field_validator("id")
     @classmethod
@@ -386,6 +409,7 @@ class ServerView:
     cloudwatch: CloudWatchCfg
     kubernetes: KubernetesCfg
     datadog: DatadogCfg
+    azure: AzureCfg
 
 
 class Config(_M):
@@ -408,6 +432,7 @@ class Config(_M):
     cloudwatch: CloudWatchCfg = CloudWatchCfg()
     kubernetes: KubernetesCfg = KubernetesCfg()
     datadog: DatadogCfg = DatadogCfg()
+    azure: AzureCfg = AzureCfg()
     digest: DigestCfg = DigestCfg()
     alerts: AlertsCfg = AlertsCfg()
     status_page: StatusPageCfg = StatusPageCfg()
@@ -420,7 +445,7 @@ class Config(_M):
         if not self.servers:
             env = self.app.environment
             return [ServerView("default", env or self.app.name, env, self.datasources, self.services, self.checks,
-                               self.github, self.grafana, self.sentry, self.cloudwatch, self.kubernetes, self.datadog)]
+                               self.github, self.grafana, self.sentry, self.cloudwatch, self.kubernetes, self.datadog, self.azure)]
         return [
             ServerView(
                 s.id, s.name or s.id, s.environment or s.name or s.id,
@@ -433,6 +458,7 @@ class Config(_M):
                 s.cloudwatch or self.cloudwatch,
                 s.kubernetes or self.kubernetes,
                 s.datadog or self.datadog,
+                s.azure or self.azure,
             )
             for s in self.servers
         ]
