@@ -1,0 +1,31 @@
+# Needs: the `datadog:` block in the config (site, API key and application key) and the Datadog Agent on your hosts. Rules in
+# this preset are Datadog metric queries, one alert per host. Servers without Datadog skip them.
+rules:
+  - id: dd-host-cpu
+    name: Datadog host CPU high
+    datasource: datadog
+    expr: "avg:system.cpu.user{*} by {host} + avg:system.cpu.system{*} by {host}"
+    warn: 80
+    crit: 95
+    for_seconds: 600
+    unit: percent
+    summary: A host's CPU has been saturated.
+  - id: dd-host-memory
+    name: Datadog host memory low
+    datasource: datadog
+    expr: "avg:system.mem.pct_usable{*} by {host} * 100"
+    direction: below
+    warn: 15
+    crit: 5
+    for_seconds: 600
+    unit: percent
+    summary: A host has little usable memory left.
+  - id: dd-host-disk
+    name: Datadog disk filling up
+    datasource: datadog
+    expr: "max:system.disk.in_use{*} by {host,device} * 100"
+    warn: 85
+    crit: 95
+    for_seconds: 600
+    unit: percent
+    summary: A filesystem is nearly full.

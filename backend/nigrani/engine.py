@@ -70,9 +70,10 @@ class Engine:
     def __init__(self, store: Store, proms: dict[str, Prom] | Prom, notifier: Notifier, cfg: Config,
                  clock: Callable[[], float] = time.time, lokis: dict[str, Prom] | None = None,
                  sentries: dict[str, Any] | None = None, clouds: dict[str, Any] | None = None,
-                 kubes: dict[str, Any] | None = None):
+                 kubes: dict[str, Any] | None = None, dogs: dict[str, Any] | None = None):
         self.store, self.notifier, self.cfg, self.clock = store, notifier, cfg, clock
         self.lokis: dict[str, Prom] = lokis or {}  # server id -> Loki client (only servers that have Loki)
+        self.dogs: dict[str, Any] = dogs or {}  # server id -> Datadog client
         self.kubes: dict[str, Any] = kubes or {}  # server id -> Kubernetes client
         self.clouds: dict[str, Any] = clouds or {}  # server id -> CloudWatch client
         self.sentries: dict[str, Any] = sentries or {}  # server id -> Sentry client (same interface as Prom)
@@ -287,6 +288,8 @@ class Engine:
             return self.clouds.get(server_id)
         if datasource == "kubernetes":
             return self.kubes.get(server_id)
+        if datasource == "datadog":
+            return self.dogs.get(server_id)
         return prom
 
     def drop_rule(self, rule_id: str, now: float | None = None, server: str | None = None) -> None:

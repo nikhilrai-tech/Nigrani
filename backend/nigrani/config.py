@@ -162,7 +162,7 @@ class RuleCfg(_M):
     summary: str = ""
     enabled: bool = True
     servers: list[str] = Field(default_factory=list)  # empty = evaluate on every server
-    datasource: Literal["prometheus", "loki", "sentry", "cloudwatch", "kubernetes"] = "prometheus"  # loki: LogQL metric query; sentry: a Sentry search
+    datasource: Literal["prometheus", "loki", "sentry", "cloudwatch", "kubernetes", "datadog"] = "prometheus"  # loki: LogQL metric query; sentry: a Sentry search
 
 
 ChannelType = Literal["slack", "teams", "discord", "telegram", "email", "webhook", "whatsapp"]
@@ -225,6 +225,32 @@ class AlertsCfg(_M):
 class StatusPageCfg(_M):
     enabled: bool = False
     title: str = "System status"
+
+
+class DatadogCfg(_M):
+    """Datadog: metric queries become alert rules and monitors that are not OK get their own page."""
+    site: str = "datadoghq.com"  # datadoghq.eu, us3.datadoghq.com, us5.datadoghq.com, ap1.datadoghq.com, ddog-gov.com
+    api_key: str = ""
+    app_key: str = ""  # an application key whose owner may read metrics and monitors
+    url: str = ""  # only for a proxy or a test double
+
+    @field_validator("site")
+    @classmethod
+    def _site(cls, v: str) -> str:
+        if not re.fullmatch(r"[a-z0-9][a-z0-9.-]*\.[a-z]+", v):
+            raise ValueError("must look like datadoghq.com or datadoghq.eu")
+        return v
+
+    @field_validator("url")
+    @classmethod
+    def _url(cls, v: str) -> str:
+        if v and not re.match(r"^https?://[^\s]+$", v):
+            raise ValueError("must start with http:// or https://")
+        return v.rstrip("/")
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.api_key and self.app_key)
 
 
 class KubernetesCfg(_M):
@@ -335,6 +361,7 @@ class ServerCfg(_M):
     sentry: SentryCfg | None = None
     cloudwatch: CloudWatchCfg | None = None
     kubernetes: KubernetesCfg | None = None
+    datadog: DatadogCfg | None = None
 
     @field_validator("id")
     @classmethod
@@ -358,6 +385,7 @@ class ServerView:
     sentry: SentryCfg
     cloudwatch: CloudWatchCfg
     kubernetes: KubernetesCfg
+    datadog: DatadogCfg
 
 
 class Config(_M):
@@ -379,6 +407,7 @@ class Config(_M):
     sentry: SentryCfg = SentryCfg()
     cloudwatch: CloudWatchCfg = CloudWatchCfg()
     kubernetes: KubernetesCfg = KubernetesCfg()
+    datadog: DatadogCfg = DatadogCfg()
     digest: DigestCfg = DigestCfg()
     alerts: AlertsCfg = AlertsCfg()
     status_page: StatusPageCfg = StatusPageCfg()
@@ -391,7 +420,7 @@ class Config(_M):
         if not self.servers:
             env = self.app.environment
             return [ServerView("default", env or self.app.name, env, self.datasources, self.services, self.checks,
-                               self.github, self.grafana, self.sentry, self.cloudwatch, self.kubernetes)]
+                               self.github, self.grafana, self.sentry, self.cloudwatch, self.kubernetes, self.datadog)]
         return [
             ServerView(
                 s.id, s.name or s.id, s.environment or s.name or s.id,
@@ -403,6 +432,7 @@ class Config(_M):
                 s.sentry or self.sentry,
                 s.cloudwatch or self.cloudwatch,
                 s.kubernetes or self.kubernetes,
+                s.datadog or self.datadog,
             )
             for s in self.servers
         ]
