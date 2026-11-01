@@ -1,0 +1,55 @@
+# Needs: the `kubernetes:` block in the config (API server URL and a read-only token), or Nigrani running inside the cluster.
+# Rules in this preset ask the Kubernetes API directly, one alert per pod, node or deployment. Servers without Kubernetes
+# skip them.
+rules:
+  - id: k8s-crashloop
+    name: Pod crash-looping
+    datasource: kubernetes
+    expr: crashloop
+    crit: 0
+    for_seconds: 120
+    unit: short
+    summary: A container keeps crashing or cannot start (CrashLoopBackOff, ImagePullBackOff...). Check the pod's logs and events.
+  - id: k8s-restarts
+    name: Pod restarting
+    datasource: kubernetes
+    expr: restarts_1h
+    warn: 2
+    crit: 5
+    for_seconds: 0
+    unit: short
+    summary: A pod restarted several times in the last hour.
+  - id: k8s-pod-not-ready
+    name: Pod not ready
+    datasource: kubernetes
+    expr: not_ready_minutes
+    warn: 5
+    crit: 15
+    for_seconds: 0
+    unit: short
+    summary: A pod has been Pending or not Ready for this many minutes.
+  - id: k8s-pod-failed
+    name: Pod failed
+    datasource: kubernetes
+    expr: pod_failed
+    warn: 0
+    for_seconds: 0
+    unit: short
+    summary: A pod is in phase Failed, for example evicted.
+  - id: k8s-node-not-ready
+    name: Node not ready
+    datasource: kubernetes
+    expr: node_not_ready
+    crit: 0
+    for_seconds: 120
+    unit: short
+    summary: A Kubernetes node is not Ready; its pods will be rescheduled.
+  - id: k8s-deployment-unavailable
+    name: Deployment missing replicas
+    datasource: kubernetes
+    expr: deployment_unavailable
+    warn: 0
+    crit: 1
+    for_seconds: 300
+    unit: short
+    summary: A Deployment has fewer available replicas than it wants (the value is how many are missing).

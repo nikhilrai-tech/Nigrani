@@ -23,6 +23,7 @@ from .oidc import Oidc, OidcError, new_login
 from .sentry import SORTS as SENTRY_SORTS
 from .sentry import Sentry
 from .cloudwatch import CloudWatch
+from .kubernetes import Kubernetes
 from .passwords import hash_password, password_problem
 from .checks import CheckRunner
 from .config import Config, ConfigError, ServerView
@@ -102,7 +103,7 @@ class Runtime:
 
 def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
                loki: "dict[str, Prom] | None" = None, sentry: "dict[str, Any] | None" = None,
-               cloudwatch: "dict[str, Any] | None" = None) -> FastAPI:
+               cloudwatch: "dict[str, Any] | None" = None, kubernetes: "dict[str, Any] | None" = None) -> FastAPI:
     allow_no_auth = os.environ.get("NIGRANI_ALLOW_NO_AUTH") == "1"
     if not cfg.auth.password and not allow_no_auth:
         raise ConfigError("auth.password is empty. Set NIGRANI_PASSWORD (NIGRANI_ALLOW_NO_AUTH=1 is for local dev only).")
@@ -122,13 +123,14 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
         v.id: Prom(v.datasources.loki.rstrip("/") + "/loki", v.datasources.timeout) for v in views if v.datasources.loki}
     sentries = sentry if sentry is not None else {v.id: Sentry(v.sentry, v.datasources.timeout) for v in views if v.sentry.enabled}
     clouds = cloudwatch if cloudwatch is not None else {v.id: CloudWatch(v.cloudwatch, v.datasources.timeout) for v in views if v.cloudwatch.enabled}
-    engine = Engine(store, proms, notifier, cfg, lokis=lokis, sentries=sentries, clouds=clouds)
+    kubes = kubernetes if kubernetes is not None else {v.id: Kubernetes(v.kubernetes, v.datasources.timeout) for v in views if v.kubernetes.enabled}
+    engine = Engine(store, proms, notifier, cfg, lokis=lokis, sentries=sentries, clouds=clouds, kubes=kubes)
 
     def datasources_available() -> set[str]:
-        return {"prometheus"} | ({"loki"} if lokis else set()) | ({"sentry"} if sentries else set()) | ({"cloudwatch"} if clouds else set())
+        return {"prometheus"} | ({"loki"} if lokis else set()) | ({"sentry"} if sentries else set()) | ({"cloudwatch"} if clouds else set()) | ({"kubernetes"} if kubes else set())
 
     def client_for(datasource: str, server_id: str, prom: Any) -> Any:
-        return {"loki": lokis, "sentry": sentries, "cloudwatch": clouds}.get(datasource, {server_id: prom}).get(server_id)
+        return {"loki": lokis, "sentry": sentries, "cloudwatch": clouds, "kubernetes": kubes}.get(datasource, {server_id: prom}).get(server_id)
     runtimes: dict[str, Runtime] = {
         v.id: Runtime(v, proms[v.id], CheckRunner(cfg, store, engine, v), GithubDeploys(v.github))
         for v in views if v.id in proms
@@ -195,7 +197,7 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-        for p in [*proms.values(), *lokis.values(), *sentries.values(), *clouds.values()]:
+        for p in [*proms.values(), *lokis.values(), *sentries.values(), *clouds.values(), *kubes.values()]:
             await p.close()
 
     app = FastAPI(title="Nigrani", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -284,8 +286,8 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
             "default_server": default_id,
             "servers": [{"id": rt.view.id, "name": rt.view.name, "environment": rt.view.environment,
                          "logs": bool(rt.view.datasources.loki), "deploys": rt.github.enabled,
-                         "grafana": bool(rt.view.grafana.url), "sentry": rt.view.id in sentries,
-                         "datasources": ["prometheus"] + (["loki"] if rt.view.id in lokis else []) + (["sentry"] if rt.view.id in sentries else []) + (["cloudwatch"] if rt.view.id in clouds else []),
+                         "grafana": bool(rt.view.grafana.url), "sentry": rt.view.id in sentries, "kubernetes": rt.view.id in kubes,
+                         "datasources": ["prometheus"] + (["loki"] if rt.view.id in lokis else []) + (["sentry"] if rt.view.id in sentries else []) + (["cloudwatch"] if rt.view.id in clouds else []) + (["kubernetes"] if rt.view.id in kubes else []),
                          "checks": bool(rt.view.checks)} for rt in runtimes.values()],
             "features": {"logs": any(rt.view.datasources.loki for rt in runtimes.values()),
                          "deploys": any(rt.github.enabled for rt in runtimes.values()),
@@ -616,7 +618,7 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
         rule = store.get_rule(inc["source_id"])
         if rule:
             client = client_for(rule["datasource"], inc["server"], rt.prom)
-            if client is not None and rule["datasource"] != "sentry":
+            if client is not None and rule["datasource"] not in ("sentry", "kubernetes"):
                 try:
                     res = await client.range(rule["expr"], start, end, step)
                     pick = [r for r in res if series_key(r["labels"]) == inc["series_key"]] or res[:3]
@@ -976,6 +978,30 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
         except PromError as e:
             raise _prom_guard(e) from e
         return {k: {"count": len(r), "capped": len(r) >= 100} for k, r in zip(queries, results)}
+
+    # ---------------- kubernetes ----------------
+    @secured.get("/kubernetes")
+    async def kubernetes_overview(namespace: str = Query("", max_length=100), rt: Runtime = Depends(srv)) -> dict[str, Any]:
+        k = kubes.get(rt.view.id)
+        if k is None:
+            raise HTTPException(404, f"Kubernetes is not configured for {rt.view.name} (kubernetes.url and kubernetes.token)")
+        try:
+            pods, nodes, deployments = await asyncio.gather(k.pods(), k.nodes(), k.deployments())
+        except PromError as e:
+            raise _prom_guard(e) from e
+        namespaces = sorted({p["namespace"] for p in pods})
+        if namespace:
+            pods = [p for p in pods if p["namespace"] == namespace]
+            deployments = [d for d in deployments if d["namespace"] == namespace]
+        healthy = lambda p: p["phase"] in ("Succeeded",) or (p["phase"] == "Running" and p["ready"] and not p["crashloop"])  # noqa: E731
+        pods.sort(key=lambda p: (healthy(p), -p["restarts_1h"], p["namespace"], p["name"]))
+        return {
+            "nodes": nodes, "namespaces": namespaces, "pods": pods[:500], "truncated": len(pods) > 500,
+            "deployments": [d for d in deployments if d["available"] < d["desired"]],
+            "summary": {"nodes": len(nodes), "nodes_ready": sum(n["ready"] for n in nodes), "pods": len(pods),
+                        "pods_unhealthy": sum(not healthy(p) for p in pods), "restarts_1h": sum(p["restarts_1h"] for p in pods),
+                        "deployments": len(deployments), "deployments_unavailable": sum(d["available"] < d["desired"] for d in deployments)},
+        }
 
     @secured.get("/checks")
     async def get_checks(rt: Runtime = Depends(srv)) -> list[dict[str, Any]]:

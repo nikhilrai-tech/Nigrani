@@ -35,6 +35,7 @@ datasources:
 #   celery    celery-exporter            workers, queue length, failures
 #   logs      Loki (datasources.loki)    error-spike alert per container (LogQL rule)
 #   sentry    Sentry (sentry:)           new-issue and fatal-issue alerts
+#   kubernetes Kubernetes (kubernetes:)    crash-looping pods, unready nodes, deployments missing replicas
 #   cloudwatch AWS CloudWatch (cloudwatch:) RDS and EC2 alerts read straight from CloudWatch
 presets: [core, django, redis, celery]
 
@@ -112,6 +113,14 @@ digest:
 #   secret_access_key: ${AWS_SECRET_ACCESS_KEY}
 #   session_token: ""
 #   endpoint_url: ""                              # only for a VPC endpoint
+
+# A Kubernetes cluster, read-only (see examples/kubernetes-rbac.yaml). Optional.
+# kubernetes:
+#   url: https://my-cluster.example.com:6443     # empty inside a cluster: the pod's service account is used
+#   token: ${KUBERNETES_TOKEN}
+#   ca_file: /config/k8s-ca.crt
+#   verify_tls: true
+#   namespaces: []                               # empty = all
 
 alerts:
   eval_interval: 30              # seconds between rule evaluations

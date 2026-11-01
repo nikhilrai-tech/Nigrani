@@ -162,7 +162,7 @@ class RuleCfg(_M):
     summary: str = ""
     enabled: bool = True
     servers: list[str] = Field(default_factory=list)  # empty = evaluate on every server
-    datasource: Literal["prometheus", "loki", "sentry", "cloudwatch"] = "prometheus"  # loki: LogQL metric query; sentry: a Sentry search
+    datasource: Literal["prometheus", "loki", "sentry", "cloudwatch", "kubernetes"] = "prometheus"  # loki: LogQL metric query; sentry: a Sentry search
 
 
 ChannelType = Literal["slack", "teams", "discord", "telegram", "email", "webhook", "whatsapp"]
@@ -225,6 +225,26 @@ class AlertsCfg(_M):
 class StatusPageCfg(_M):
     enabled: bool = False
     title: str = "System status"
+
+
+class KubernetesCfg(_M):
+    """A Kubernetes cluster (read-only). Inside a cluster, leave `url` empty: the pod's service account is used."""
+    url: str = ""  # API server, e.g. https://10.0.0.1:6443; empty = Kubernetes not configured (unless running in a cluster)
+    token: str = ""  # a service account token that may get/list pods, nodes and deployments (use ${K8S_TOKEN})
+    ca_file: str = ""  # CA certificate of the API server
+    verify_tls: bool = True
+    namespaces: list[str] = Field(default_factory=list)  # empty = every namespace
+
+    @field_validator("url")
+    @classmethod
+    def _url(cls, v: str) -> str:
+        if v and not re.match(r"^https?://[^\s]+$", v):
+            raise ValueError("must start with http:// or https://")
+        return v.rstrip("/")
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.url) or bool(os.environ.get("KUBERNETES_SERVICE_HOST"))
 
 
 class CloudWatchCfg(_M):
@@ -314,6 +334,7 @@ class ServerCfg(_M):
     grafana: GrafanaCfg | None = None
     sentry: SentryCfg | None = None
     cloudwatch: CloudWatchCfg | None = None
+    kubernetes: KubernetesCfg | None = None
 
     @field_validator("id")
     @classmethod
@@ -336,6 +357,7 @@ class ServerView:
     grafana: GrafanaCfg
     sentry: SentryCfg
     cloudwatch: CloudWatchCfg
+    kubernetes: KubernetesCfg
 
 
 class Config(_M):
@@ -356,6 +378,7 @@ class Config(_M):
     grafana: GrafanaCfg = GrafanaCfg()
     sentry: SentryCfg = SentryCfg()
     cloudwatch: CloudWatchCfg = CloudWatchCfg()
+    kubernetes: KubernetesCfg = KubernetesCfg()
     digest: DigestCfg = DigestCfg()
     alerts: AlertsCfg = AlertsCfg()
     status_page: StatusPageCfg = StatusPageCfg()
@@ -368,7 +391,7 @@ class Config(_M):
         if not self.servers:
             env = self.app.environment
             return [ServerView("default", env or self.app.name, env, self.datasources, self.services, self.checks,
-                               self.github, self.grafana, self.sentry, self.cloudwatch)]
+                               self.github, self.grafana, self.sentry, self.cloudwatch, self.kubernetes)]
         return [
             ServerView(
                 s.id, s.name or s.id, s.environment or s.name or s.id,
@@ -379,6 +402,7 @@ class Config(_M):
                 s.grafana or self.grafana,
                 s.sentry or self.sentry,
                 s.cloudwatch or self.cloudwatch,
+                s.kubernetes or self.kubernetes,
             )
             for s in self.servers
         ]

@@ -21,7 +21,7 @@ class RuleIn(BaseModel):
     summary: str = ""
     enabled: bool = True
     servers: list[str] = []
-    datasource: Literal["prometheus", "loki", "sentry", "cloudwatch"] = "prometheus"
+    datasource: Literal["prometheus", "loki", "sentry", "cloudwatch", "kubernetes"] = "prometheus"
 
     @field_validator("id")
     @classmethod

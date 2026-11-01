@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Kubernetes** (`kubernetes:` config, read-only): a Kubernetes page (nodes, pods, deployments missing replicas, restarts),
+  a `kubernetes` data source for alert rules (`crashloop`, `restarts_1h`, `not_ready_minutes`, `pod_failed`,
+  `node_not_ready`, `deployment_unavailable`, narrowed with `namespace=` / `pod=`), a `kubernetes` preset, an RBAC
+  example, and automatic in-cluster credentials.
+
 ## [0.2.0] - 2026-11-02
 
 ### Added
