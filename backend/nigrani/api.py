@@ -12,12 +12,15 @@ from pathlib import Path
 from typing import Any, Literal
 
 import httpx
+from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 
 from . import __version__
-from .auth import COOKIE, Auth, make_dependency
+from .auth import COOKIE, Auth, Identity, make_authorizer
+from .oidc import Oidc, OidcError, new_login
+from .passwords import hash_password, password_problem
 from .checks import CheckRunner
 from .config import Config, ConfigError, ServerView
 from .containers import _fresh, collect_containers, collect_host, container_signals, forget_container, safe_name
@@ -30,7 +33,7 @@ from .github import GithubDeploys
 from .notifiers import CHANNEL_FIELDS, Notifier, mask_settings
 from .prom import Prom, PromError, PromUnavailable, series_key, series_label
 from .legacy_presets import SHIPPED_IN_0_1_0
-from .schemas import ChannelIn, RuleIn, rule_problem
+from .schemas import ChannelIn, RuleIn, UserIn, UserPatch, rule_problem
 from .store import Store
 from . import templates as msg_templates
 
@@ -121,8 +124,9 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
     default_id = next(iter(runtimes))
     digest = DigestScheduler(cfg, store, [(rt.view, rt.prom) for rt in runtimes.values()], notifier)
     auth = Auth(cfg.auth.username, cfg.auth.password, cfg.auth.secret or os.environ.get("NIGRANI_SECRET", ""),
-                cfg.auth.session_hours, enabled=bool(cfg.auth.password))
-    require = make_dependency(auth)
+                cfg.auth.session_hours, enabled=bool(cfg.auth.password), store=store)
+    authorize = make_authorizer(auth)
+    oidc = Oidc(cfg.auth.oidc, cfg.app.public_url.rstrip("/") + "/api/auth/oidc/callback") if cfg.auth.oidc else None
     avail_cache: dict[tuple[str, str], tuple[float, bool]] = {}
 
     def srv(server: str | None = Query(None)) -> Runtime:
@@ -184,6 +188,7 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
 
     app = FastAPI(title="Nigrani", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None)
     app.state.store, app.state.engine, app.state.cfg, app.state.runtimes = store, engine, cfg, runtimes
+    app.state.auth, app.state.oidc = auth, oidc
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -198,8 +203,39 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
             resp.headers.setdefault("Cache-Control", "no-store")
         return resp
 
+    AUDIT_LABELS = [
+        ("POST", r"^/api/rules$", "rule.create"), ("PUT", r"^/api/rules/[^/]+$", "rule.update"),
+        ("DELETE", r"^/api/rules/[^/]+$", "rule.delete"), ("POST", r"^/api/channels$", "channel.save"),
+        ("DELETE", r"^/api/channels/[^/]+$", "channel.delete"), ("POST", r"^/api/channels/[^/]+/test$", "channel.test"),
+        ("POST", r"^/api/silences$", "silence.create"), ("DELETE", r"^/api/silences/\d+$", "silence.delete"),
+        ("POST", r"^/api/incidents/\d+/ack$", "incident.ack"), ("DELETE", r"^/api/incidents/\d+/ack$", "incident.unack"),
+        ("POST", r"^/api/digest/send$", "digest.send"), ("GET", r"^/api/backup$", "backup.export"),
+        ("POST", r"^/api/backup/import$", "backup.import"), ("POST", r"^/api/users$", "user.create"),
+        ("PUT", r"^/api/users/\d+$", "user.update"), ("DELETE", r"^/api/users/\d+$", "user.delete"),
+        ("DELETE", r"^/api/containers/.+$", "container.forget"),
+    ]
+    NOT_AUDITED = {"/api/rules/test", "/api/channels/preview", "/api/login", "/api/logout"}
+
+    @app.middleware("http")
+    async def audit_log(request: Request, call_next):
+        resp = await call_next(request)
+        path, method = request.url.path, request.method
+        label = next((l for m, rx, l in AUDIT_LABELS if m == method and re.match(rx, path)), None)
+        if (label is None and method in ("GET", "HEAD", "OPTIONS")) or not path.startswith("/api/") or path in NOT_AUDITED:
+            return resp
+        if path == "/api/backup/import" and request.query_params.get("dry_run", "true").lower() != "false":
+            return resp                                           # a dry run changes nothing
+        who = getattr(request.state, "identity", None)
+        if resp.status_code == 401 or who is None:
+            return resp
+        denied = resp.status_code == 403
+        detail = getattr(request.state, "audit_detail", "")
+        store.add_audit(who.username, ("denied: " if denied else "") + (label or f"{method} {path}"), detail,
+                        request.client.host if request.client else "", resp.status_code)
+        return resp
+
     api = APIRouter(prefix="/api")
-    secured = APIRouter(prefix="/api", dependencies=[Depends(require)])
+    secured = APIRouter(prefix="/api", dependencies=[Depends(authorize)])
 
     # ---------------- public ----------------
     @api.get("/health")
@@ -211,11 +247,14 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
         ip = request.client.host if request.client else "?"
         if auth.throttled(ip):
             raise HTTPException(429, "too many failed attempts, try again in a few minutes")
-        if not auth.check_login(ip, body.username, body.password):
+        who = auth.login(ip, body.username, body.password)
+        if not who:
+            store.add_audit(body.username[:100], "login.failed", ip=ip, status=401)
             raise HTTPException(401, "wrong username or password")
-        response.set_cookie(COOKIE, auth.make_token(body.username), max_age=auth.ttl, httponly=True,
+        store.add_audit(who.username, "login", ip=ip, status=200)
+        response.set_cookie(COOKIE, auth.make_token(who.username, who.provider), max_age=auth.ttl, httponly=True,
                             samesite="lax", secure=request.url.scheme == "https")
-        return {"user": body.username}
+        return {"user": who.username, "role": who.role}
 
     @api.post("/logout")
     async def logout(response: Response) -> dict[str, bool]:
@@ -224,11 +263,12 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
 
     @api.get("/me")
     async def me(request: Request) -> dict[str, Any]:
-        user = auth.user_from(request)
-        if not user:
+        who = auth.identity_from(request)
+        if not who:
             raise HTTPException(401, "not authenticated")
         return {
-            "user": user, "app": cfg.app.name, "environment": cfg.app.environment, "version": __version__,
+            "user": who.username, "name": who.name, "role": who.role, "provider": who.provider,
+            "can": {"edit": who.can("editor"), "admin": who.can("admin")}, "app": cfg.app.name, "environment": cfg.app.environment, "version": __version__,
             "default_server": default_id,
             "servers": [{"id": rt.view.id, "name": rt.view.name, "environment": rt.view.environment,
                          "logs": bool(rt.view.datasources.loki), "deploys": rt.github.enabled,
@@ -239,6 +279,65 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
                          "checks": any(rt.view.checks for rt in runtimes.values()),
                          "digest": cfg.digest.enabled, "auth": auth.enabled, "multi": len(runtimes) > 1},
         }
+
+    # ---------------- single sign-on ----------------
+    SSO_COOKIE = "nigrani_oidc"
+
+    def _sso_failure(message: str, request: Request) -> RedirectResponse:
+        resp = RedirectResponse("/?" + urlencode({"sso_error": message}), status_code=302)
+        resp.delete_cookie(SSO_COOKIE)
+        store.add_audit("-", "login.sso_failed", message, request.client.host if request.client else "", 403)
+        return resp
+
+    @api.get("/auth/config")
+    async def auth_config() -> dict[str, Any]:
+        return {"oidc": {"label": cfg.auth.oidc.label, "login_url": "/api/auth/oidc/login"} if oidc and cfg.auth.oidc else None}
+
+    @api.get("/auth/oidc/login")
+    async def oidc_login(request: Request):
+        if not oidc:
+            raise HTTPException(404, "single sign-on is not configured")
+        state, nonce, verifier = new_login()
+        try:
+            url = await oidc.authorize_url(state, nonce, verifier)
+        except OidcError as e:
+            return _sso_failure(str(e), request)
+        resp = RedirectResponse(url, status_code=302)
+        resp.set_cookie(SSO_COOKIE, auth.sign_blob({"s": state, "n": nonce, "v": verifier}, 600), max_age=600,
+                        httponly=True, samesite="lax", secure=request.url.scheme == "https")
+        return resp
+
+    @api.get("/auth/oidc/callback")
+    async def oidc_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+        if not oidc:
+            raise HTTPException(404, "single sign-on is not configured")
+        pending = auth.read_blob(request.cookies.get(SSO_COOKIE))
+        if error:
+            return _sso_failure(f"the provider refused the sign-in ({error})", request)
+        if not pending or not state or state != pending.get("s") or not code:
+            return _sso_failure("the sign-in attempt expired or did not start here; please try again", request)
+        try:
+            claims = await oidc.finish(code, pending["v"], pending["n"])
+        except OidcError as e:
+            return _sso_failure(str(e), request)
+        email = claims["email"].lower()
+        if not oidc.allowed(email):
+            return _sso_failure(f"{email} is not allowed to sign in here", request)
+        user = store.get_user_by_name(email)
+        if user and user["provider"] != "oidc":
+            return _sso_failure(f"an account named {email} already exists with a password", request)
+        if user and user["disabled"]:
+            return _sso_failure("this account is disabled", request)
+        if not user:
+            user = store.create_user(username=email, name=claims.get("name") or email, email=email,
+                                     role=oidc.role_for_new_user(email), provider="oidc")
+        store.touch_login(user["id"])
+        store.add_audit(user["username"], "login.sso", ip=request.client.host if request.client else "", status=200)
+        resp = RedirectResponse("/", status_code=302)
+        resp.set_cookie(COOKIE, auth.make_token(user["username"], "oidc"), max_age=auth.ttl, httponly=True,
+                        samesite="lax", secure=request.url.scheme == "https")
+        resp.delete_cookie(SSO_COOKIE)
+        return resp
 
     @api.get("/public/status")
     async def public_status() -> dict[str, Any]:
@@ -433,7 +532,8 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
             raise HTTPException(422, problem)
 
     @secured.post("/rules")
-    async def create_rule(r: RuleIn) -> dict[str, Any]:
+    async def create_rule(r: RuleIn, request: Request) -> dict[str, Any]:
+        request.state.audit_detail = r.name
         _validate_rule(r)
         rid = r.id or re.sub(r"[^a-z0-9]+", "-", r.name.lower()).strip("-")[:60] or "rule"
         if store.get_rule(rid):
@@ -441,7 +541,8 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
         return store.save_rule({**r.model_dump(), "id": rid, "source": "custom"})
 
     @secured.put("/rules/{rule_id}")
-    async def update_rule(rule_id: str, r: RuleIn) -> dict[str, Any]:
+    async def update_rule(rule_id: str, r: RuleIn, request: Request) -> dict[str, Any]:
+        request.state.audit_detail = f"{rule_id}: {r.name}"
         old = store.get_rule(rule_id)
         if not old:
             raise HTTPException(404, "unknown rule")
@@ -451,7 +552,8 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
         return store.save_rule({**r.model_dump(), "id": rule_id, "source": old["source"]})
 
     @secured.delete("/rules/{rule_id}")
-    async def delete_rule(rule_id: str) -> dict[str, bool]:
+    async def delete_rule(rule_id: str, request: Request) -> dict[str, bool]:
+        request.state.audit_detail = rule_id
         engine.drop_rule(rule_id)
         store.delete_rule(rule_id)
         return {"ok": True}
@@ -566,9 +668,9 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
         return out
 
     @secured.post("/incidents/{incident_id}/ack")
-    async def ack_incident(incident_id: int, body: AckIn, user: str = Depends(require)) -> dict[str, Any]:
+    async def ack_incident(incident_id: int, body: AckIn, who: Identity = Depends(authorize)) -> dict[str, Any]:
         """"I'm on it": pause this incident's reminders and tell the channels once."""
-        inc = await engine.acknowledge(incident_id, user, body.note.strip(), body.hours)
+        inc = await engine.acknowledge(incident_id, who.name or who.username, body.note.strip(), body.hours)
         if inc is None:
             raise HTTPException(409, "only a firing incident can be acknowledged")
         return inc
@@ -580,12 +682,76 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
             raise HTTPException(409, "only a firing incident can be un-acknowledged")
         return inc
 
+    # ---------------- users and audit log (admin) ----------------
+    def _admin_count(excluding: int | None = None) -> int:
+        return sum(1 for u in store.list_users() if u["role"] == "admin" and not u["disabled"] and u["id"] != excluding)
+
+    def _public_user(u: dict[str, Any]) -> dict[str, Any]:
+        return {k: u[k] for k in ("id", "username", "name", "email", "role", "provider", "disabled", "has_password",
+                                  "created_at", "last_login")}
+
+    @secured.get("/users")
+    async def list_users() -> list[dict[str, Any]]:
+        config_admin = {"id": None, "username": cfg.auth.username, "name": cfg.auth.username, "email": None,
+                        "role": "admin", "provider": "config", "disabled": False, "has_password": True,
+                        "created_at": None, "last_login": None}
+        return [config_admin, *[_public_user(u) for u in store.list_users()]]
+
+    @secured.post("/users")
+    async def create_user(body: UserIn, request: Request) -> dict[str, Any]:
+        problem = password_problem(body.password)
+        if problem:
+            raise HTTPException(422, problem)
+        if body.username.lower() == cfg.auth.username.lower() or store.get_user_by_name(body.username):
+            raise HTTPException(409, "that username is taken")
+        request.state.audit_detail = f"{body.username} as {body.role}"
+        return _public_user(store.create_user(username=body.username, name=body.name, email=body.email, role=body.role,
+                                              password_hash=hash_password(body.password)))
+
+    @secured.put("/users/{user_id}")
+    async def update_user(user_id: int, body: UserPatch, request: Request, who: Identity = Depends(authorize)) -> dict[str, Any]:
+        user = store.get_user(user_id)
+        if not user:
+            raise HTTPException(404, "unknown user")
+        fields: dict[str, Any] = {k: v for k, v in body.model_dump(exclude_unset=True).items() if k != "password"}
+        if body.password is not None:
+            if user["provider"] != "local":
+                raise HTTPException(422, "this account signs in through single sign-on; it has no password")
+            problem = password_problem(body.password)
+            if problem:
+                raise HTTPException(422, problem)
+            fields["password_hash"] = hash_password(body.password)
+        if user["username"] == who.username and (fields.get("disabled") or fields.get("role", "admin") != "admin"):
+            raise HTTPException(409, "you can't lock yourself out: ask another administrator")
+        loses_admin = user["role"] == "admin" and (fields.get("disabled") or fields.get("role", "admin") != "admin")
+        if loses_admin and _admin_count(excluding=user_id) == 0 and who.provider != "config":
+            raise HTTPException(409, "this is the last administrator")
+        request.state.audit_detail = f"{user['username']}: " + ", ".join(k for k in fields if k != "password_hash") + (
+            ", password" if "password_hash" in fields else "")
+        return _public_user(store.update_user(user_id, **fields))  # type: ignore[arg-type]
+
+    @secured.delete("/users/{user_id}")
+    async def delete_user(user_id: int, request: Request, who: Identity = Depends(authorize)) -> dict[str, bool]:
+        user = store.get_user(user_id)
+        if not user:
+            raise HTTPException(404, "unknown user")
+        if user["username"] == who.username:
+            raise HTTPException(409, "you can't delete your own account")
+        request.state.audit_detail = user["username"]
+        store.delete_user(user_id)
+        return {"ok": True}
+
+    @secured.get("/audit")
+    async def audit_list(limit: int = Query(200, ge=1, le=1000), user: str | None = None, days: float = Query(30, gt=0, le=365)) -> list[dict[str, Any]]:
+        return store.list_audit(limit, user=user, since=time.time() - days * 86400)
+
     @secured.get("/silences")
     async def silences() -> list[dict[str, Any]]:
         return store.list_silences()
 
     @secured.post("/silences")
-    async def add_silence(s: SilenceIn) -> dict[str, int]:
+    async def add_silence(s: SilenceIn, request: Request) -> dict[str, int]:
+        request.state.audit_detail = f"{s.source_id or 'all rules'} {s.match or ''} for {s.minutes} min".strip()
         _check_servers([s.server] if s.server else [])
         return {"id": store.add_silence(s.source_id, s.match, time.time() + s.minutes * 60, s.reason, s.server)}
 
@@ -607,7 +773,8 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
         return [_public_channel(c) for c in store.list_channels()]
 
     @secured.post("/channels")
-    async def save_channel(c: ChannelIn) -> dict[str, Any]:
+    async def save_channel(c: ChannelIn, request: Request) -> dict[str, Any]:
+        request.state.audit_detail = f"{c.name} ({c.type})"
         _check_servers(c.servers)
         bad = msg_templates.validate(c.title_template, c.body_template)
         if bad:
@@ -645,7 +812,8 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
         return {"title": out["title"], "body": out["body"]}
 
     @secured.delete("/channels/{channel_id}")
-    async def delete_channel(channel_id: str) -> dict[str, bool]:
+    async def delete_channel(channel_id: str, request: Request) -> dict[str, bool]:
+        request.state.audit_detail = channel_id
         store.delete_channel(channel_id)
         return {"ok": True}
 
@@ -716,7 +884,8 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
 
     # ---------------- backup / restore ----------------
     @secured.get("/backup")
-    async def backup(include_secrets: bool = False) -> JSONResponse:
+    async def backup(request: Request, include_secrets: bool = False) -> JSONResponse:
+        request.state.audit_detail = "including credentials" if include_secrets else "credentials left out"
         data = backup_mod.export_backup(store, include_secrets=include_secrets, app_version=__version__)
         name = f"nigrani-backup-{time.strftime('%Y%m%d')}.json"
         return JSONResponse(data, headers={"Content-Disposition": f'attachment; filename="{name}"'})
@@ -737,6 +906,7 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
         if plan.errors:
             return JSONResponse({**plan.view(), "applied": False}, status_code=422)
         backup_mod.apply_import(store, plan, preset_rule_ids={r.id for r in cfg.rules}, drop_rule=engine.drop_rule)
+        request.state.audit_detail = f"{mode}: " + ", ".join(f"{k} {v['create']} new/{v['update']} replaced" for k, v in plan.summary().items())
         return {**plan.view(), "applied": True}
 
     @secured.get("/grafana-links")

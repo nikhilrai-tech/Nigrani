@@ -8,7 +8,7 @@ import { DashboardLinks } from '../components/Grafana';
 import Logs from './Logs';
 
 function ContainerDrawer({ c, onClose, onForget }) {
-  const { range, theme, me } = useApp();
+  const { range, theme, me, can } = useApp();
   const m = useApi(`/containers/${encodeURIComponent(c.name)}/metrics?range=${range}`, { interval: 30000 });
   const d = m.data;
   return (
@@ -26,7 +26,7 @@ function ContainerDrawer({ c, onClose, onForget }) {
         <Card title="Memory"><Chart series={d ? [{ name: 'Working set', points: d.mem }] : []} unit="bytes" kind="area" height={150} theme={theme} /></Card>
         <Card title="Network"><Chart series={d ? [{ name: 'Receive', points: d.rx }, { name: 'Transmit', points: d.tx }] : []} unit="bps" height={150} theme={theme} /></Card>
         {me?.features?.logs && <Card title="Recent logs"><Logs embedded container={c.name} /></Card>}
-        {c.auto && <button className="btn danger" onClick={() => onForget(c)}>Stop tracking this container</button>}
+        {c.auto && can.edit && <button className="btn danger" onClick={() => onForget(c)}>Stop tracking this container</button>}
       </div>
     </Drawer>
   );

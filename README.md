@@ -37,6 +37,7 @@ silently stops. Nigrani answers the operational questions directly:
 | **Uptime** | HTTP / TCP / TLS-certificate-expiry checks with 30-day uptime and an optional public status page |
 | **Deploys** | GitHub Actions runs (pull-request and Dependabot runs are ignored), shown as dashed markers on charts |
 | **Digest** | A daily or weekly summary message |
+| **Users and roles** | Several people with viewer / editor / admin roles, password or single sign-on (Google, Microsoft, Okta, Keycloak... any OpenID Connect provider), and an audit log of sign-ins and changes |
 | **Backup** | Export and restore rules, channels and silences as one JSON file, with a dry-run before anything changes |
 | **Multiple servers** | Watch production and staging (or any number of environments) from one dashboard, with an all-servers view and per-server routing of alerts |
 | **UI** | Light/dark, responsive, keyboard accessible, no external fonts or CDNs |
@@ -298,9 +299,47 @@ history is not included.
 
 The API equivalent is `POST /api/backup/import?mode=merge|overwrite&dry_run=true|false` (dry run is the default).
 
+## Users, roles and single sign-on
+
+The account in `auth.username` / `auth.password` is the **configured administrator**: it always works, is always an
+admin and cannot be edited in the UI, so you can never lock yourself out. Everyone else is added on the **Users** page
+(admins only) or signs in with single sign-on.
+
+| Role | Can |
+|---|---|
+| **viewer** | Look at everything: dashboards, alerts, incident pages, logs. Change nothing. |
+| **editor** | Also acknowledge and silence alerts, create/edit rules and channels, send test messages, export a backup. |
+| **admin** | Also manage users, restore backups, export credentials, read the audit log. |
+
+Role changes and disabling an account apply to open sessions within seconds. Passwords are stored as scrypt hashes
+(at least 10 characters). The **Audit log** records sign-ins (including failed and refused ones) and every change, with
+who did it and from where.
+
+**Single sign-on** works with any OpenID Connect provider. For Google: create an OAuth client (type *Web application*)
+in Google Cloud Console, add `https://nigrani.example.com/api/auth/oidc/callback` as an authorised redirect URI, then:
+
+```yaml
+app: { public_url: "https://nigrani.example.com" }
+auth:
+  oidc:
+    issuer: https://accounts.google.com
+    client_id: <client id>
+    client_secret: ${GOOGLE_CLIENT_SECRET}
+    label: Sign in with Google
+    allowed_domains: [example.com]      # any verified address at this domain...
+    allowed_emails: []                  # ...or these specific addresses
+    admin_emails: [you@example.com]     # first sign-in creates an admin
+    editor_emails: []
+    default_role: viewer                # for everyone else who is allowed in
+```
+
+Nigrani refuses to start with SSO configured but nobody allowed (otherwise every account at the provider could sign
+in). The first sign-in creates the user with a role from those lists; after that the role is whatever an admin sets on the
+Users page. Only verified e-mail addresses are accepted. Users and the audit log are not part of a backup.
+
 ## Security
 
-- The UI and API require a login. Nigrani refuses to start without a password
+- The UI and API require a login, and every change is checked against the signed-in person's role. Nigrani refuses to start without a password
   (`NIGRANI_ALLOW_NO_AUTH=1` exists for local development only).
 - Login is rate-limited, sessions are signed `HttpOnly` cookies, and state-changing requests need a custom header
   (CSRF protection). Secrets are masked in API responses.

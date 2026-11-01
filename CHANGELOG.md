@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Several users with **roles** (viewer, editor, admin): a Users page for admins, scrypt-hashed passwords, role changes
+  and disabling that apply to open sessions within seconds, and an **audit log** of sign-ins and changes.
+  Every state-changing route needs at least `editor`; forgotten routes fail closed.
+- **Single sign-on** with any OpenID Connect provider (Google, Microsoft, Okta, Keycloak, Dex...), authorization code
+  flow with PKCE, verified e-mail only, restricted by `allowed_domains` / `allowed_emails`, roles from
+  `admin_emails` / `editor_emails`. The configured administrator always works.
 - Grafana links (`grafana:` config): "Open in Grafana" opens Explore with an alert's query and time range, and your own
   dashboards are linked from the incident, container, host and overview screens, with `{container}`, `{from}`, `{to}`
   and other placeholders.

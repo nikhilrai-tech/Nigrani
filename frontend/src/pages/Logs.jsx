@@ -10,7 +10,7 @@ const clock = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour12: false
 const levelOf = (line) => (/(error|exception|traceback|critical|fatal)/i.test(line) ? 'error' : /warn/i.test(line) ? 'warn' : '');
 
 export default function Logs({ embedded = false, container: fixed = '' }) {
-  const { range } = useApp();
+  const { range, can } = useApp();
   const containers = useApi('/containers', { enabled: !embedded });
   const [container, setContainer] = useState(fixed);
   const [level, setLevel] = useState('all');
@@ -49,7 +49,7 @@ export default function Logs({ embedded = false, container: fixed = '' }) {
           <Seg value={level} options={['all', 'warn', 'error']} onChange={setLevel} />
           <input type="text" placeholder="Search text…" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 280 }} aria-label="Search logs" />
           <span style={{ marginLeft: 'auto' }}><ExploreButton expr={state.query} datasource="loki" label="Open in Grafana" /></span>
-          <button className="btn sm" onClick={() => setCreating(true)} disabled={!state.query} title="Alert when this search matches too many lines">Create alert from this search</button>
+          {can.edit && <button className="btn sm" onClick={() => setCreating(true)} disabled={!state.query} title="Alert when this search matches too many lines">Create alert from this search</button>}
           <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} /> Live (5s)</label>
         </div>
       )}

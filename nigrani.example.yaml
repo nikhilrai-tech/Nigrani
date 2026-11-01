@@ -9,8 +9,16 @@ app:
 
 auth:
   username: admin
-  password: ${NIGRANI_PASSWORD}    # required; Nigrani refuses to start without it
+  password: ${NIGRANI_PASSWORD}    # required; the always-available administrator (other users: Users page)
   session_hours: 24
+  # Single sign-on with any OpenID Connect provider (needs app.public_url). See the README.
+  # oidc:
+  #   issuer: https://accounts.google.com
+  #   client_id: <client id>
+  #   client_secret: ${GOOGLE_CLIENT_SECRET}
+  #   label: Sign in with Google
+  #   allowed_domains: [example.com]
+  #   admin_emails: [you@example.com]
 
 datasources:
   prometheus: http://prometheus:9090

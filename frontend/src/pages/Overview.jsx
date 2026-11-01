@@ -24,7 +24,7 @@ function Banner({ o }) {
 }
 
 export default function Overview() {
-  const { range, theme } = useApp();
+  const { range, theme, can } = useApp();
   const ov = useApi('/overview', { interval: 15000 });
   const host = useApi(`/host?range=${range}`, { interval: 30000 });
   const deploys = useApi('/deploys', { interval: 60000 });
@@ -85,7 +85,7 @@ export default function Overview() {
                     <div><a href={`#/incident/${i.id}`}><b>{i.rule_name}</b></a> {i.series && <span className="muted">· {i.series}</span>}</div>
                     <div className="muted" style={{ fontSize: 12.5 }}>{i.last_value != null && `${fmtValue(i.last_value, i.unit)} · `}since {fmtAgo(i.started_at)}{i.silenced ? ' · silenced' : ''}{i.acked_at ? ` · acknowledged by ${i.acked_by}` : ''}</div>
                   </div>
-                  <button className="btn sm right" onClick={() => silence(i)}>Silence 1h</button>
+                  {can.edit && <button className="btn sm right" onClick={() => silence(i)}>Silence 1h</button>}
                 </div>
               ))}
             </div>

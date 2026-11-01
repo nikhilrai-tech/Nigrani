@@ -1,12 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { ErrorNote, Icon } from '../components/ui';
 
 export default function Login({ onDone }) {
-  const [u, setU] = useState('admin');
+  const [u, setU] = useState('');
   const [p, setP] = useState('');
-  const [err, setErr] = useState(null);
+  const [err, setErr] = useState(new URLSearchParams(window.location.search).get('sso_error'));
   const [busy, setBusy] = useState(false);
+  const [sso, setSso] = useState(null);
+
+  useEffect(() => {
+    api('/auth/config').then((c) => setSso(c.oidc)).catch(() => {});
+    if (new URLSearchParams(window.location.search).has('sso_error')) window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+  }, []);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -20,12 +26,18 @@ export default function Login({ onDone }) {
     <div className="login">
       <form className="card" onSubmit={submit}>
         <div className="brand" style={{ padding: '0 0 12px' }}><Icon name="activity" size={24} />Nigrani</div>
+        {sso && (
+          <>
+            <a className="btn primary sso" href={sso.login_url}>{sso.label}</a>
+            <div className="divider">or with a password</div>
+          </>
+        )}
         <label className="f" htmlFor="u">Username</label>
-        <input id="u" type="text" value={u} onChange={(e) => setU(e.target.value)} autoComplete="username" />
+        <input id="u" type="text" value={u} onChange={(e) => setU(e.target.value)} autoComplete="username" autoFocus={!sso} />
         <label className="f" htmlFor="p">Password</label>
-        <input id="p" type="password" value={p} onChange={(e) => setP(e.target.value)} autoComplete="current-password" autoFocus />
+        <input id="p" type="password" value={p} onChange={(e) => setP(e.target.value)} autoComplete="current-password" />
         <div style={{ marginTop: 12 }}><ErrorNote>{err}</ErrorNote></div>
-        <button className="btn primary" style={{ width: '100%', justifyContent: 'center', marginTop: 16 }} disabled={busy || !p}>Sign in</button>
+        <button className="btn primary" style={{ width: '100%', justifyContent: 'center', marginTop: 16 }} disabled={busy || !p || !u}>Sign in</button>
       </form>
     </div>
   );

@@ -143,6 +143,7 @@ function AckBadge({ i }) {
 }
 
 function Active({ server }) {
+  const { can } = useApp();
   const [ackFor, setAckFor] = useState(null);
   const { data, error, reload } = useApi(`/incidents?status=firing${server ? `&server=${server}` : ''}`, { interval: 10000 });
   const silence = async (i, minutes) => { await api('/silences', { method: 'POST', body: { server: i.server, source_id: i.source_id, match: i.series || null, minutes, reason: 'Silenced from alerts page' } }); reload(); };
@@ -160,9 +161,9 @@ function Active({ server }) {
             <td><a href={`#/incident/${i.id}`}><b>{i.rule_name}</b></a>{i.series && <span className="muted"> · {i.series}</span>} <ServerTag id={i.server} /><div className="muted" style={{ fontSize: 12.5 }}>{i.summary}</div></td>
             <td>{fmtValue(i.last_value, i.unit)}{i.threshold != null && <div className="muted" style={{ fontSize: 12 }}>threshold {fmtValue(i.threshold, i.unit)}</div>}</td>
             <td>{fmtAgo(i.started_at)}{i.silenced && <div><Badge>silenced</Badge></div>}<div><AckBadge i={i} /></div>{i.ack_note && <div className="muted" style={{ fontSize: 12 }}>“{i.ack_note}”</div>}</td>
-            <td style={{ whiteSpace: 'nowrap' }}>
+            <td style={{ whiteSpace: 'nowrap' }}>{can.edit && <>
               {i.acked_at ? <button className="btn sm" onClick={() => unack(i)}>Un-acknowledge</button> : <button className="btn sm" onClick={() => setAckFor(i)}>Acknowledge</button>}{' '}
-              <button className="btn sm" onClick={() => silence(i, 60)}>Silence 1h</button> <button className="btn sm" onClick={() => silence(i, 1440)}>24h</button></td>
+              <button className="btn sm" onClick={() => silence(i, 60)}>Silence 1h</button> <button className="btn sm" onClick={() => silence(i, 1440)}>24h</button></>}</td>
           </tr>
         ))}</tbody>
       </table></div>
@@ -251,6 +252,7 @@ function HistoryTable({ data }) {
 }
 
 function Rules() {
+  const { can } = useApp();
   const { data, error, reload } = useApi('/rules', { interval: 20000 });
   const [edit, setEdit] = useState(null);
   const toggle = async (r, enabled) => { await api(`/rules/${r.id}`, { method: 'PUT', body: { ...r, enabled } }); reload(); };
@@ -259,18 +261,18 @@ function Rules() {
   return (
     <div className="stack">
       <div className="row"><span className="muted">Thresholds are editable here; presets are only seeded once, so your edits survive restarts.</span>
-        <button className="btn primary right" onClick={() => setEdit({})}>New rule</button></div>
+        {can.edit && <button className="btn primary right" onClick={() => setEdit({})}>New rule</button>}</div>
       <ErrorNote>{error}</ErrorNote>
       <Card flush><div className="scroll"><table className="t">
         <thead><tr><th>On</th><th>Rule</th><th>Thresholds</th><th>For</th><th>State</th><th /></tr></thead>
         <tbody>{(data || []).map((r) => (
           <tr key={r.id}>
-            <td><Toggle checked={r.enabled} onChange={(v) => toggle(r, v)} label={`Enable ${r.name}`} /></td>
+            <td>{can.edit ? <Toggle checked={r.enabled} onChange={(v) => toggle(r, v)} label={`Enable ${r.name}`} /> : <Badge>{r.enabled ? 'on' : 'off'}</Badge>}</td>
             <td><b>{r.name}</b> {r.datasource === 'loki' && <Badge>logs</Badge>} {r.servers?.length > 0 && <Badge kind="info">only: {r.servers.join(', ')}</Badge>}<div className="mono muted" style={{ maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.expr}>{r.expr}</div></td>
             <td>{thr(r)}</td>
             <td>{fmtDuration(r.for_seconds)}</td>
             <td>{r.error ? <Badge kind="warn" icon="alert">query error</Badge> : r.enabled ? <Badge kind="ok" icon="check">evaluating</Badge> : <Badge>disabled</Badge>}{r.error && <div className="muted" style={{ fontSize: 12 }}>{r.error.slice(0, 80)}</div>}</td>
-            <td style={{ whiteSpace: 'nowrap' }}><button className="btn sm icon" onClick={() => setEdit(r)} aria-label={`Edit ${r.name}`}>Edit</button> <button className="btn sm danger" onClick={() => del(r)} aria-label={`Delete ${r.name}`}>Delete</button></td>
+            <td style={{ whiteSpace: 'nowrap' }}>{can.edit && <><button className="btn sm icon" onClick={() => setEdit(r)} aria-label={`Edit ${r.name}`}>Edit</button> <button className="btn sm danger" onClick={() => del(r)} aria-label={`Delete ${r.name}`}>Delete</button></>}</td>
           </tr>
         ))}</tbody>
       </table></div></Card>
@@ -280,6 +282,7 @@ function Rules() {
 }
 
 function Silences() {
+  const { can } = useApp();
   const { data, error, reload } = useApi('/silences', { interval: 20000 });
   const del = async (s) => { await api(`/silences/${s.id}`, { method: 'DELETE' }); reload(); };
   if (!data) return error ? <ErrorNote>{error}</ErrorNote> : null;
@@ -288,7 +291,7 @@ function Silences() {
     <Card flush><div className="list">{data.map((s) => (
       <div key={s.id} className="row">
         <Badge>silenced</Badge><b>{s.source_id || 'all rules'}</b>{s.server && <Badge kind="info">{s.server}</Badge>}{s.match && <span className="mono muted">matching “{s.match}”</span>}
-        <span className="muted">until {fmtDateTime(s.until)}</span><button className="btn sm right" onClick={() => del(s)}>Remove</button>
+        <span className="muted">until {fmtDateTime(s.until)}</span>{can.edit && <button className="btn sm right" onClick={() => del(s)}>Remove</button>}
       </div>))}</div></Card>
   );
 }

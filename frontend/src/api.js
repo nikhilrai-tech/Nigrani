@@ -26,6 +26,7 @@ export async function api(path, { method = 'GET', body, server } = {}) {
   if (res.status === 401 && !path.startsWith('/login') && !path.startsWith('/me') && !path.startsWith('/public')) {
     window.dispatchEvent(new Event('nigrani:unauth'));
   }
+  if (res.status === 403) window.dispatchEvent(new Event('nigrani:forbidden'));   // maybe our role changed: refresh it
   let data = null;
   try { data = await res.json(); } catch { /* empty body */ }
   if (!res.ok) {
