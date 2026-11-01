@@ -56,6 +56,14 @@ silently stops. Nigrani answers the operational questions directly:
   <img src="docs/screenshots/fleet.png" width="49%" alt="All servers" />
   <img src="docs/screenshots/incident-timeline.png" width="49%" alt="Incident timeline" />
 </p>
+<p>
+  <img src="docs/screenshots/sentry.png" width="49%" alt="Sentry issues" />
+  <img src="docs/screenshots/users.png" width="49%" alt="Users and roles" />
+</p>
+<p>
+  <img src="docs/screenshots/rule-cloudwatch.png" width="49%" alt="CloudWatch alert rule with live preview" />
+  <img src="docs/screenshots/incident-cloudwatch.png" width="49%" alt="Incident for an RDS database" />
+</p>
 
 ## Quick start
 
