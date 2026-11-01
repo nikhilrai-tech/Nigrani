@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { Badge, Card, ErrorNote, Icon, Seg } from '../components/ui';
+import { useApp } from '../ctx';
 
 const KINDS = [['rules', 'Alert rules'], ['channels', 'Channels'], ['silences', 'Silences']];
 
@@ -34,6 +35,7 @@ function Plan({ plan }) {
 }
 
 export default function Backup() {
+  const { can } = useApp();
   const [withSecrets, setWithSecrets] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -96,10 +98,10 @@ export default function Backup() {
           Everything you configured in the UI, as one JSON file: to move to a new server, keep a copy, or recover after a mistake.
           Incident history is not included.
         </p>
-        <label className="row" style={{ gap: 8, margin: '12px 0' }}>
+        {can.admin && <label className="row" style={{ gap: 8, margin: '12px 0' }}>
           <input type="checkbox" checked={withSecrets} onChange={(e) => setWithSecrets(e.target.checked)} />
           Include credentials (webhook URLs, tokens)
-        </label>
+        </label>}
         {withSecrets
           ? <div className="err" role="alert">The file will contain working credentials. Store it like a password and never commit it.</div>
           : <div className="hint">Credentials are left out. Values that reference an environment variable, such as <span className="mono">${'{SLACK_URL}'}</span>, are kept because they are not secrets.</div>}
@@ -108,7 +110,7 @@ export default function Backup() {
         </div>
       </Card>
 
-      <Card title="Restore" sub="from a backup file">
+      {can.admin ? <Card title="Restore" sub="from a backup file">
         <p className="muted" style={{ marginTop: 0 }}>
           Choose a file to see what would change first. Nothing is deleted, and if anything in the file is invalid nothing is imported.
         </p>
@@ -130,7 +132,7 @@ export default function Backup() {
               : <button className="btn primary" onClick={apply} disabled={busy || !plan.ok || total === 0}>{total === 0 ? 'Nothing to import' : `Import ${total} item${total === 1 ? '' : 's'}`}</button>}
           </div>
         )}
-      </Card>
+      </Card> : <Card title="Restore" sub="administrators only"><p className="muted" style={{ margin: 0 }}>Restoring a backup can overwrite rules and channels, so it needs the admin role.</p></Card>}
     </div>
   );
 }

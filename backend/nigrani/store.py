@@ -48,6 +48,16 @@ CREATE TABLE IF NOT EXISTS incident_events (
   detail TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS ix_incident_events ON incident_events(incident_id, ts);
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE COLLATE NOCASE, name TEXT NOT NULL DEFAULT '',
+  email TEXT, role TEXT NOT NULL DEFAULT 'viewer', password_hash TEXT, provider TEXT NOT NULL DEFAULT 'local',
+  disabled INTEGER NOT NULL DEFAULT 0, created_at REAL NOT NULL, last_login REAL
+);
+CREATE TABLE IF NOT EXISTS audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, user TEXT NOT NULL, action TEXT NOT NULL,
+  detail TEXT NOT NULL DEFAULT '', ip TEXT NOT NULL DEFAULT '', status INTEGER
+);
+CREATE INDEX IF NOT EXISTS ix_audit_ts ON audit(ts);
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
 """
 
@@ -95,6 +105,57 @@ class Store:
             cur = self._db.execute(sql, args)
             self._db.commit()
             return cur.lastrowid or 0
+
+    # ---- users ----
+    @staticmethod
+    def _user(r: sqlite3.Row) -> dict[str, Any]:
+        d = dict(r)
+        d["disabled"] = bool(d["disabled"])
+        d["has_password"] = bool(d.get("password_hash"))
+        return d
+
+    def create_user(self, *, username: str, role: str, name: str = "", email: str | None = None,
+                    password_hash: str | None = None, provider: str = "local") -> dict[str, Any]:
+        uid = self._x("INSERT INTO users(username,name,email,role,password_hash,provider,created_at) VALUES(?,?,?,?,?,?,?)",
+                      (username, name or username, email, role, password_hash, provider, time.time()))
+        return self.get_user(uid)  # type: ignore[return-value]
+
+    def get_user(self, user_id: int) -> dict[str, Any] | None:
+        rows = self._q("SELECT * FROM users WHERE id=?", (user_id,))
+        return self._user(rows[0]) if rows else None
+
+    def get_user_by_name(self, username: str) -> dict[str, Any] | None:
+        rows = self._q("SELECT * FROM users WHERE username=?", (username,))
+        return self._user(rows[0]) if rows else None
+
+    def list_users(self) -> list[dict[str, Any]]:
+        return [self._user(r) for r in self._q("SELECT * FROM users ORDER BY username")]
+
+    def update_user(self, user_id: int, **fields: Any) -> dict[str, Any] | None:
+        allowed = {"name", "email", "role", "password_hash", "disabled"}
+        fields = {k: (int(v) if k == "disabled" else v) for k, v in fields.items() if k in allowed}
+        if fields:
+            cols = ", ".join(f"{k}=?" for k in fields)
+            self._x(f"UPDATE users SET {cols} WHERE id=?", (*fields.values(), user_id))
+        return self.get_user(user_id)
+
+    def delete_user(self, user_id: int) -> None:
+        self._x("DELETE FROM users WHERE id=?", (user_id,))
+
+    def touch_login(self, user_id: int) -> None:
+        self._x("UPDATE users SET last_login=? WHERE id=?", (time.time(), user_id))
+
+    # ---- audit log ----
+    def add_audit(self, user: str, action: str, detail: str = "", ip: str = "", status: int | None = None) -> None:
+        self._x("INSERT INTO audit(ts,user,action,detail,ip,status) VALUES(?,?,?,?,?,?)",
+                (time.time(), user, action, detail[:500], ip, status))
+
+    def list_audit(self, limit: int = 200, user: str | None = None, since: float | None = None) -> list[dict[str, Any]]:
+        sql, args = "SELECT * FROM audit WHERE ts >= ?", [since or 0]
+        if user:
+            sql += " AND user=?"
+            args.append(user)
+        return [dict(r) for r in self._q(sql + " ORDER BY id DESC LIMIT ?", (*args, limit))]
 
     # ---- kv ----
     def kv_get(self, key: str, default: Any = None) -> Any:
@@ -329,3 +390,4 @@ class Store:
         self._x("DELETE FROM incidents WHERE status='resolved' AND resolved_at < ?", (cutoff,))
         self._x("DELETE FROM silences WHERE until < ?", (time.time() - 86400,))
         self._x("DELETE FROM incident_events WHERE incident_id NOT IN (SELECT id FROM incidents)")
+        self._x("DELETE FROM audit WHERE ts < ?", (cutoff,))

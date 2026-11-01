@@ -31,6 +31,32 @@ class RuleIn(BaseModel):
         return v
 
 
+USERNAME_RE = re.compile(r"^[A-Za-z0-9._@+-]{3,64}$")
+
+
+class UserIn(BaseModel):
+    username: str
+    name: str = Field("", max_length=100)
+    email: str | None = Field(None, max_length=200)
+    role: Literal["viewer", "editor", "admin"] = "viewer"
+    password: str
+
+    @field_validator("username")
+    @classmethod
+    def _username(cls, v: str) -> str:
+        if not USERNAME_RE.match(v):
+            raise ValueError("username: 3-64 letters, digits or . _ @ + -")
+        return v
+
+
+class UserPatch(BaseModel):
+    name: str | None = Field(None, max_length=100)
+    email: str | None = Field(None, max_length=200)
+    role: Literal["viewer", "editor", "admin"] | None = None
+    disabled: bool | None = None
+    password: str | None = None
+
+
 def rule_problem(r: "RuleIn") -> str | None:
     """Thresholds must make sense; returns a message or None."""
     if r.warn is not None and r.crit is not None:

@@ -48,11 +48,33 @@ class AppCfg(_M):
     public_url: str = ""  # used for links inside notifications
 
 
+class OidcCfg(_M):
+    """Single sign-on with any OpenID Connect provider (Google, Microsoft Entra, Okta, Keycloak, Dex...)."""
+    issuer: str  # e.g. https://accounts.google.com (its /.well-known/openid-configuration is used)
+    client_id: str
+    client_secret: str
+    label: str = "Sign in with SSO"
+    scopes: list[str] = Field(default_factory=lambda: ["openid", "email", "profile"])
+    allowed_domains: list[str] = Field(default_factory=list)  # e.g. ["example.com"]: any verified address there
+    allowed_emails: list[str] = Field(default_factory=list)
+    admin_emails: list[str] = Field(default_factory=list)  # signing in with these creates an admin
+    editor_emails: list[str] = Field(default_factory=list)
+    default_role: Literal["viewer", "editor", "admin"] = "viewer"  # for first-time users who are allowed in
+
+    @model_validator(mode="after")
+    def _someone_is_allowed(self) -> "OidcCfg":
+        if not (self.allowed_domains or self.allowed_emails or self.admin_emails or self.editor_emails):
+            raise ValueError("set allowed_domains, allowed_emails, admin_emails or editor_emails: without one of them "
+                             "every account at the provider could sign in")
+        return self
+
+
 class AuthCfg(_M):
     username: str = "admin"
     password: str = ""
     secret: str = ""
     session_hours: int = 24
+    oidc: OidcCfg | None = None
 
 
 class DatasourcesCfg(_M):
@@ -374,6 +396,9 @@ def load_config(path: str | None = None, *, explicit: bool = False) -> Config:
     unknown = {sid for r in [*cfg.rules, *cfg.channels] for sid in r.servers} - set(ids) if ids else set()
     if unknown:
         raise ConfigError(f"rules/channels reference unknown server(s): {', '.join(sorted(unknown))}")
+
+    if cfg.auth.oidc and not cfg.app.public_url:
+        raise ConfigError("auth.oidc needs app.public_url: the provider redirects the browser back to it")
 
     cfg.tiles = _merge_by_id(preset_tiles, cfg.tiles)
     cfg.pages = _merge_by_id(preset_pages, cfg.pages)

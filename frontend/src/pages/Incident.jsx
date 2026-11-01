@@ -11,7 +11,7 @@ import { AckModal } from './Alerts';
 const ICON = { crit: 'alert', warn: 'alert', ok: 'check', info: 'activity', '': 'activity' };
 
 function Header({ d, reload }) {
-  const { servers, multi } = useApp();
+  const { servers, multi, can } = useApp();
   const i = d.incident;
   const [acking, setAcking] = useState(false);
   const firing = i.status === 'firing';
@@ -26,7 +26,7 @@ function Header({ d, reload }) {
         {multi && <Badge kind="info">{servers.find((s) => s.id === i.server)?.name || i.server}</Badge>}
         {i.acked_at && <Badge kind="info" icon="check">acknowledged by {i.acked_by}</Badge>}
         {i.silenced && <Badge>silenced</Badge>}
-        {firing && (
+        {firing && can.edit && (
           <span className="right row">
             {i.acked_at ? <button className="btn sm" onClick={unack}>Un-acknowledge</button> : <button className="btn sm" onClick={() => setAcking(true)}>Acknowledge</button>}
             <button className="btn sm" onClick={silence}>Silence 1h</button>

@@ -104,6 +104,7 @@ function ChannelModal({ channel, fields, onClose, onSaved }) {
 }
 
 export default function Integrations() {
+  const { can } = useApp();
   const chans = useApi('/channels', { interval: 20000 });
   const types = useApi('/channel-types');
   const [edit, setEdit] = useState(null);
@@ -123,8 +124,8 @@ export default function Integrations() {
     <div className="stack">
       <div className="row wrap">
         <span className="muted">Where alerts and summaries are delivered.</span>
-        <button className="btn right" onClick={sendDigest}>Send summary now</button>
-        <button className="btn primary" onClick={() => setEdit({})}>Add channel</button>
+        {can.edit && <><button className="btn right" onClick={sendDigest}>Send summary now</button>
+        <button className="btn primary" onClick={() => setEdit({})}>Add channel</button></>}
       </div>
       {digest && (digest.error ? <ErrorNote>{digest.error}</ErrorNote> : <div className="notice"><b>{digest.title}</b><div style={{ whiteSpace: 'pre-line' }}>{digest.body}</div></div>)}
       <ErrorNote>{chans.error}</ErrorNote>
@@ -133,7 +134,7 @@ export default function Integrations() {
         {(chans.data || []).map((c) => {
           const r = res[c.id];
           return (
-            <Card key={c.id} title={c.name} sub={TYPES[c.type]} actions={<Toggle checked={c.enabled} onChange={(v) => toggle(c, v)} label={`Enable ${c.name}`} />}>
+            <Card key={c.id} title={c.name} sub={TYPES[c.type]} actions={can.edit ? <Toggle checked={c.enabled} onChange={(v) => toggle(c, v)} label={`Enable ${c.name}`} /> : <Badge>{c.enabled ? 'on' : 'off'}</Badge>}>
               <div className="row wrap" style={{ marginBottom: 10 }}>
                 <Badge kind="info">{SEVS.find((s) => s[0] === c.min_severity)?.[1]}</Badge>
                 {c.servers?.length > 0 && <Badge kind="info">only: {c.servers.join(', ')}</Badge>}
@@ -143,11 +144,11 @@ export default function Integrations() {
               </div>
               {c.last_error && <div className="err" style={{ marginBottom: 10 }}>{c.last_error}</div>}
               {r && !r.busy && (r.ok ? <div className="notice" style={{ marginBottom: 10 }}>Test message sent.</div> : <div className="err" style={{ marginBottom: 10 }}>{r.error}</div>)}
-              <div className="row">
+              {can.edit && <div className="row">
                 <button className="btn sm" onClick={() => test(c)} disabled={r?.busy}>{r?.busy ? 'Sending…' : 'Send test'}</button>
                 <button className="btn sm" onClick={() => setEdit(c)}>Edit</button>
                 <button className="btn sm danger right" onClick={() => del(c)}>Delete</button>
-              </div>
+              </div>}
             </Card>
           );
         })}

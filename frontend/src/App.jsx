@@ -9,6 +9,7 @@ import Containers from './pages/Containers';
 import Deploys from './pages/Deploys';
 import Fleet from './pages/Fleet';
 import Host from './pages/Host';
+import Audit from './pages/Audit';
 import Incident from './pages/Incident';
 import Integrations from './pages/Integrations';
 import Login from './pages/Login';
@@ -17,6 +18,7 @@ import Overview from './pages/Overview';
 import PanelPage from './pages/PanelPage';
 import Status from './pages/Status';
 import Uptime from './pages/Uptime';
+import Users from './pages/Users';
 
 const RANGES = ['15m', '1h', '6h', '24h', '7d'];
 
@@ -48,7 +50,7 @@ function Shell({ me, onLogout }) {
   setCurrentServer(server); // keep imperative api() calls pointed at the selected server
   const setServer = (id) => { setCurrentServer(id); setServerState(id); lsSet('nigrani.server', id); };
   const multi = me.servers.length > 1;
-  const ctx = useMemo(() => ({ range, theme, me, server, servers: me.servers, multi, setServer }), [range, theme, me, server, multi]); // eslint-disable-line react-hooks/exhaustive-deps
+  const ctx = useMemo(() => ({ range, theme, me, can: me.can || { edit: false, admin: false }, server, servers: me.servers, multi, setServer }), [range, theme, me, server, multi]); // eslint-disable-line react-hooks/exhaustive-deps
   const setRange = (r) => { setRangeState(r); lsSet('nigrani.range', r); };
   return (
     <AppCtx.Provider value={ctx}>
@@ -84,6 +86,7 @@ function Layout({ me, onLogout, toggleTheme, setRange }) {
       ...(cur.deploys ? [{ to: '/deploys', label: 'Deploys', icon: 'rocket', key: 'deploys' }] : []),
       { to: '/integrations', label: 'Integrations', icon: 'plug', key: 'integrations' },
       { to: '/backup', label: 'Backup', icon: 'download', key: 'backup' },
+      ...(me.can?.admin ? [{ to: '/users', label: 'Users', icon: 'users', key: 'users' }, { to: '/audit', label: 'Audit log', icon: 'file', key: 'audit' }] : []),
     ];
     return { items, extra, tail };
   }, [pages.data, firing.data, cur, multi]);
@@ -106,6 +109,8 @@ function Layout({ me, onLogout, toggleTheme, setRange }) {
     case 'deploys': view = <Deploys />; break;
     case 'integrations': view = <Integrations />; break;
     case 'backup': view = <Backup />; break;
+    case 'users': view = <Users />; break;
+    case 'audit': view = <Audit />; break;
     default: view = <Overview />;
   }
 
@@ -141,6 +146,7 @@ function Layout({ me, onLogout, toggleTheme, setRange }) {
             <span className="spacer" />
             {['overview', 'host', 'p', 'containers'].includes(section || 'overview') && <Seg value={range} options={RANGES} onChange={setRange} />}
             <button className="btn icon" onClick={toggleTheme} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}><Icon name={theme === 'dark' ? 'sun' : 'moon'} /></button>
+            {me.features.auth && <span className="who" title={`${me.user} (${me.provider})`}>{me.name || me.user} <span className="badge">{me.role}</span></span>}
             {me.features.auth && <button className="btn icon" onClick={onLogout} aria-label="Sign out"><Icon name="logout" /></button>}
           </header>
           <main className="content" key={server}>{view}</main>
@@ -159,9 +165,16 @@ export default function App() {
   }, []);
   useEffect(() => {
     loadMe();
+    const refresh = setInterval(() => { api('/me').then(setMe).catch(() => {}); }, 30000);   // roles can change while you are signed in
+    const onForbidden = () => { api('/me').then(setMe).catch(() => {}); };
+    window.addEventListener('nigrani:forbidden', onForbidden);
     const on = () => setMe(false);
     window.addEventListener('nigrani:unauth', on);
-    return () => window.removeEventListener('nigrani:unauth', on);
+    return () => {
+      clearInterval(refresh);
+      window.removeEventListener('nigrani:unauth', on);
+      window.removeEventListener('nigrani:forbidden', onForbidden);
+    };
   }, [loadMe]);
 
   if (route.startsWith('/status')) return <Status />;
