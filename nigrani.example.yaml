@@ -34,6 +34,7 @@ datasources:
 #   mqtt      a Mosquitto exporter
 #   celery    celery-exporter            workers, queue length, failures
 #   logs      Loki (datasources.loki)    error-spike alert per container (LogQL rule)
+#   sentry    Sentry (sentry:)           new-issue and fatal-issue alerts
 presets: [core, django, redis, celery]
 
 # Optional. Containers you consider critical: if one stops, you get a "Container down" alert.
@@ -95,6 +96,13 @@ digest:
 #   loki_datasource: <datasource UID>
 #   dashboards:
 #     - { title: Containers, url: "/d/abc123/containers?var-container={container}&from={from}&to={to}", where: [incident, container] }
+
+# Application errors from Sentry (sentry.io or self-hosted). Optional.
+# sentry:
+#   url: https://sentry.io
+#   org: my-org
+#   token: ${SENTRY_TOKEN}         # scopes: project:read, event:read
+#   projects: []                   # empty = all projects
 
 alerts:
   eval_interval: 30              # seconds between rule evaluations

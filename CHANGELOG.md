@@ -12,6 +12,9 @@ All notable changes to this project are documented here. The format follows
 - **Single sign-on** with any OpenID Connect provider (Google, Microsoft, Okta, Keycloak, Dex...), authorization code
   flow with PKCE, verified e-mail only, restricted by `allowed_domains` / `allowed_emails`, roles from
   `admin_emails` / `editor_emails`. The configured administrator always works.
+- **Sentry** (`sentry:` config): a Sentry page (search, sort, unresolved / new / fatal tiles), a `sentry` data source for
+  alert rules where the value is the number of matching issues per project, a `sentry` preset, and the matching issues
+  on an incident's page. Works with sentry.io and self-hosted Sentry.
 - Grafana links (`grafana:` config): "Open in Grafana" opens Explore with an alert's query and time range, and your own
   dashboards are linked from the incident, container, host and overview screens, with `{container}`, `{from}`, `{to}`
   and other placeholders.

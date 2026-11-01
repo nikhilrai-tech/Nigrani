@@ -132,7 +132,7 @@ def test_one_bad_item_blocks_everything_and_lists_the_problems(tmp_path):
         body = r.json()
         assert body["applied"] is False and len(body["errors"]) == 5
         text = " | ".join(body["errors"])
-        assert "less severe" in text and "unknown server" in text and "no server has Loki" in text and "{rulee}" in text
+        assert "less severe" in text and "unknown server" in text and "no server has it configured" in text and "{rulee}" in text
         assert b.get("/api/channels").json() == []                     # the good items were not applied either
         assert not any(x["id"] == "queue-deep" for x in b.get("/api/rules").json())
 
