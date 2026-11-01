@@ -35,6 +35,7 @@ datasources:
 #   celery    celery-exporter            workers, queue length, failures
 #   logs      Loki (datasources.loki)    error-spike alert per container (LogQL rule)
 #   sentry    Sentry (sentry:)           new-issue and fatal-issue alerts
+#   azure     Azure Monitor (azure:)        VM, PostgreSQL, SQL and App Service plan rules
 #   datadog   Datadog (datadog:)            host CPU, memory and disk from the Datadog Agent
 #   kubernetes Kubernetes (kubernetes:)    crash-looping pods, unready nodes, deployments missing replicas
 #   cloudwatch AWS CloudWatch (cloudwatch:) RDS and EC2 alerts read straight from CloudWatch
@@ -128,6 +129,14 @@ digest:
 #   site: datadoghq.com                           # or datadoghq.eu, us3.datadoghq.com ...
 #   api_key: ${DD_API_KEY}
 #   app_key: ${DD_APP_KEY}
+
+# Azure Monitor metrics as alert rules (datasource: azure). Optional. A service principal with the Monitoring Reader role.
+# azure:
+#   tenant_id: ${AZURE_TENANT_ID}
+#   client_id: ${AZURE_CLIENT_ID}
+#   client_secret: ${AZURE_CLIENT_SECRET}
+#   subscription_id: ${AZURE_SUBSCRIPTION_ID}
+#   resource_groups: []                           # empty = the whole subscription
 
 alerts:
   eval_interval: 30              # seconds between rule evaluations

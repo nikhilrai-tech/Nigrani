@@ -1,0 +1,58 @@
+# Needs: the `azure:` block in the config (a service principal with the Monitoring Reader role). Rules in this preset read
+# Azure Monitor metrics, one alert per resource of each type; types you do not use simply have no resources. Servers without
+# Azure skip them.
+rules:
+  - id: azure-vm-cpu
+    name: Azure VM CPU high
+    datasource: azure
+    expr: Microsoft.Compute/virtualMachines "Percentage CPU" aggregation=Maximum interval=PT5M
+    warn: 85
+    crit: 95
+    for_seconds: 600
+    unit: percent
+    summary: A virtual machine's CPU is saturated.
+  - id: azure-postgres-cpu
+    name: Azure PostgreSQL CPU high
+    datasource: azure
+    expr: Microsoft.DBforPostgreSQL/flexibleServers cpu_percent aggregation=Maximum interval=PT5M
+    warn: 80
+    crit: 95
+    for_seconds: 600
+    unit: percent
+    summary: A PostgreSQL flexible server's CPU is saturated.
+  - id: azure-postgres-storage
+    name: Azure PostgreSQL storage filling up
+    datasource: azure
+    expr: Microsoft.DBforPostgreSQL/flexibleServers storage_percent aggregation=Maximum interval=PT15M
+    warn: 85
+    crit: 95
+    for_seconds: 600
+    unit: percent
+    summary: A PostgreSQL flexible server is running out of storage.
+  - id: azure-sql-cpu
+    name: Azure SQL database CPU high
+    datasource: azure
+    expr: Microsoft.Sql/servers/databases cpu_percent aggregation=Maximum interval=PT5M
+    warn: 80
+    crit: 95
+    for_seconds: 600
+    unit: percent
+    summary: An Azure SQL database's CPU is saturated.
+  - id: azure-appplan-cpu
+    name: Azure App Service plan CPU high
+    datasource: azure
+    expr: Microsoft.Web/serverFarms CpuPercentage aggregation=Maximum interval=PT5M
+    warn: 80
+    crit: 95
+    for_seconds: 600
+    unit: percent
+    summary: An App Service plan's CPU is saturated.
+  - id: azure-appplan-memory
+    name: Azure App Service plan memory high
+    datasource: azure
+    expr: Microsoft.Web/serverFarms MemoryPercentage aggregation=Maximum interval=PT5M
+    warn: 85
+    crit: 95
+    for_seconds: 600
+    unit: percent
+    summary: An App Service plan's memory is nearly exhausted.
