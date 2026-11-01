@@ -31,6 +31,7 @@ silently stops. Nigrani answers the operational questions directly:
 | **Host** | CPU, memory, load, network, disk I/O, per-filesystem usage with **days-until-full forecast** |
 | **Sentry** | Unresolved, new and fatal issues on their own page, alert rules over Sentry searches, and the matching issues on an incident's page |
 | **AWS CloudWatch** | Alert rules straight on CloudWatch metrics (RDS, EC2, ELB, SQS, anything), one alert per database or instance, with the metric charted on the incident page. No exporter needed |
+| **Kubernetes** | Nodes, pods and deployments on their own page, and alert rules for crash-looping or failed pods, stuck or restarting pods, unready nodes and deployments missing replicas. Read-only, no agent in the cluster |
 | **Grafana links** | "Open in Grafana" from an alert, a rule or the Logs page (Explore with the same query and time range), plus links to your own dashboards from the incident, container, host and overview screens |
 | **Service pages** | Traffic (Django), Redis, Postgres, AWS RDS, MQTT, Celery out of the box. Add your own pages in YAML |
 | **Incident page** | Click any alert for everything around it: lifecycle timeline, the metric with thresholds, the container's CPU/memory and logs, deploys and restarts just before it started, and other alerts that fired at the same time ("What changed?") |
@@ -59,6 +60,9 @@ silently stops. Nigrani answers the operational questions directly:
 <p>
   <img src="docs/screenshots/sentry.png" width="49%" alt="Sentry issues" />
   <img src="docs/screenshots/users.png" width="49%" alt="Users and roles" />
+</p>
+<p>
+  <img src="docs/screenshots/kubernetes.png" width="49%" alt="Kubernetes pods and deployments" />
 </p>
 <p>
   <img src="docs/screenshots/rule-cloudwatch.png" width="49%" alt="CloudWatch alert rule with live preview" />
@@ -325,6 +329,40 @@ AWS/RDS CPUUtilization{DBInstanceIdentifier="*"} stat=Maximum period=300
   resolved because of it.
 - With `servers:` each server can have its own `cloudwatch:` block (for example another region or account).
 - `endpoint_url` points at a VPC endpoint if you use one.
+
+## Kubernetes
+
+Watch a cluster without installing anything in it. Nigrani reads pods, nodes and deployments from the Kubernetes API
+(read-only).
+
+```yaml
+kubernetes:
+  url: https://my-cluster.example.com:6443
+  token: ${KUBERNETES_TOKEN}          # a service account token, see examples/kubernetes-rbac.yaml
+  ca_file: /config/k8s-ca.crt         # the API server's CA certificate (or verify_tls: false for a lab)
+  namespaces: []                      # empty = every namespace
+presets: [core, kubernetes]
+```
+
+- Inside the cluster, leave `url` empty: Nigrani uses the pod's service account and CA automatically.
+- `examples/kubernetes-rbac.yaml` creates a service account that can only `get` and `list` pods, nodes and deployments.
+- The **Kubernetes page** shows nodes ready, pods and how many are unhealthy, restarts in the last hour, deployments
+  missing replicas, and a pod table with problems first and the same status words as `kubectl`.
+- **Rules** use the *kubernetes* data source and name a metric, optionally narrowed with `namespace=` and `pod=` (a glob):
+
+  | Metric | One alert per | Value |
+  |---|---|---|
+  | `crashloop` | pod | 1 while a container is in CrashLoopBackOff, ImagePullBackOff... or has just restarted repeatedly |
+  | `restarts_1h` | pod | restarts of a pod whose last restart was within the hour |
+  | `not_ready_minutes` | pod | minutes Pending or not Ready |
+  | `pod_failed` | pod | 1 for a pod in phase Failed (for example evicted) |
+  | `node_not_ready` | node | 1 for a node that is not Ready |
+  | `deployment_unavailable` | deployment | replicas wanted but not available |
+
+  Only series in trouble exist, so an alert resolves as soon as the pod recovers or is deleted. The `kubernetes` preset
+  adds a rule for each. If the API is unreachable or refuses the token the rule shows why and nothing is raised or
+  resolved because of it.
+- With `servers:` each server can point at its own cluster.
 
 ## Grafana links
 

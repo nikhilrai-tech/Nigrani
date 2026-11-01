@@ -1,0 +1,24 @@
+# Read-only access for Nigrani. Apply it, then create a token:
+#   kubectl apply -f kubernetes-rbac.yaml
+#   kubectl create token nigrani -n monitoring --duration=8760h     # set it as the KUBERNETES_TOKEN environment variable of Nigrani
+# (Running Nigrani inside the cluster? Use `serviceAccountName: nigrani` on its pod and leave kubernetes.url empty.)
+apiVersion: v1
+kind: Namespace
+metadata: {name: monitoring}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: nigrani, namespace: monitoring}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: nigrani-read}
+rules:
+  - {apiGroups: [""], resources: [pods, nodes], verbs: [get, list]}
+  - {apiGroups: [apps], resources: [deployments], verbs: [get, list]}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: nigrani-read}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: nigrani-read}
+subjects: [{kind: ServiceAccount, name: nigrani, namespace: monitoring}]
