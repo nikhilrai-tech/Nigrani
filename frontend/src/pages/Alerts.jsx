@@ -5,7 +5,7 @@ import { useApp } from '../ctx';
 import { Badge, Card, Empty, ErrorNote, Modal, Seg, SevBadge, Toggle } from '../components/ui';
 import { fmtAgo, fmtDateTime, fmtDuration, fmtValue } from '../format';
 
-const SOURCE_LABEL = { prometheus: 'Prometheus (metrics, PromQL)', loki: 'Loki (logs, LogQL)', sentry: 'Sentry (errors, issue search)' };
+const SOURCE_LABEL = { prometheus: 'Prometheus (metrics, PromQL)', loki: 'Loki (logs, LogQL)', sentry: 'Sentry (errors, issue search)', cloudwatch: 'AWS CloudWatch (metrics)' };
 const UNITS = ['short', 'percent', 'bytes', 'seconds', 'ms', 'days', 'rps'];
 const BLANK = { name: '', expr: '', datasource: 'prometheus', direction: 'above', warn: '', crit: '', for_seconds: 300, unit: 'short', summary: '', enabled: true };
 const num = (v) => (v === '' || v == null ? null : Number(v));
@@ -50,7 +50,7 @@ export function RuleModal({ rule, initial, onClose, onSaved }) {
   return (
     <Modal title={rule ? 'Edit alert rule' : 'New alert rule'} onClose={onClose} actions={<>
       <button className="btn" onClick={onClose}>Cancel</button>
-      <ExploreButton expr={f.expr} datasource={f.datasource} />
+      {['prometheus', 'loki'].includes(f.datasource) && <ExploreButton expr={f.expr} datasource={f.datasource} />}
       <button className="btn" onClick={test} disabled={busy || !f.expr}>Preview</button>
       <button className="btn primary" onClick={save} disabled={busy || !f.name || !f.expr}>Save</button>
     </>}>
@@ -64,12 +64,14 @@ export function RuleModal({ rule, initial, onClose, onSaved }) {
           </select>
         </>
       )}
-      <label className="f" htmlFor="r-expr">{{ loki: 'LogQL metric expression', sentry: 'Sentry search' }[f.datasource] || 'PromQL expression'}</label>
+      <label className="f" htmlFor="r-expr">{{ loki: 'LogQL metric expression', sentry: 'Sentry search', cloudwatch: 'CloudWatch metric' }[f.datasource] || 'PromQL expression'}</label>
       <textarea id="r-expr" value={f.expr} onChange={set('expr')} spellCheck={false}
-        placeholder={{ loki: 'sum by (container) (count_over_time({container=~".+"} |~ "(?i)error" [5m]))', sentry: 'is:unresolved firstSeen:-1h' }[f.datasource] || ''} />
+        placeholder={{ loki: 'sum by (container) (count_over_time({container=~".+"} |~ "(?i)error" [5m]))', sentry: 'is:unresolved firstSeen:-1h',
+          cloudwatch: 'AWS/RDS CPUUtilization{DBInstanceIdentifier="*"} stat=Maximum period=300' }[f.datasource] || ''} />
       <div className="hint">
         {{ loki: 'Must return numbers, so wrap a log selector in count_over_time(...) or rate(...). One alert per resulting series.',
-          sentry: 'A Sentry search. The value is how many issues match, per project, so "critical at 0" means "any".' }[f.datasource]
+          sentry: 'A Sentry search. The value is how many issues match, per project, so "critical at 0" means "any".',
+          cloudwatch: 'Namespace, metric and dimensions, then stat= and period=. "*" as a dimension value means every one that exists, with one alert per resource.' }[f.datasource]
           || 'Returns one value per series; each series alerts on its own (e.g. per container or mountpoint).'}
       </div>
       <div className="row wrap" style={{ alignItems: 'flex-start' }}>
@@ -269,7 +271,7 @@ function Rules() {
         <tbody>{(data || []).map((r) => (
           <tr key={r.id}>
             <td>{can.edit ? <Toggle checked={r.enabled} onChange={(v) => toggle(r, v)} label={`Enable ${r.name}`} /> : <Badge>{r.enabled ? 'on' : 'off'}</Badge>}</td>
-            <td><b>{r.name}</b> {r.datasource === 'loki' && <Badge>logs</Badge>}{r.datasource === 'sentry' && <Badge>sentry</Badge>} {r.servers?.length > 0 && <Badge kind="info">only: {r.servers.join(', ')}</Badge>}<div className="mono muted" style={{ maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.expr}>{r.expr}</div></td>
+            <td><b>{r.name}</b> {r.datasource === 'loki' && <Badge>logs</Badge>}{r.datasource === 'sentry' && <Badge>sentry</Badge>}{r.datasource === 'cloudwatch' && <Badge>aws</Badge>} {r.servers?.length > 0 && <Badge kind="info">only: {r.servers.join(', ')}</Badge>}<div className="mono muted" style={{ maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.expr}>{r.expr}</div></td>
             <td>{thr(r)}</td>
             <td>{fmtDuration(r.for_seconds)}</td>
             <td>{r.error ? <Badge kind="warn" icon="alert">query error</Badge> : r.enabled ? <Badge kind="ok" icon="check">evaluating</Badge> : <Badge>disabled</Badge>}{r.error && <div className="muted" style={{ fontSize: 12 }}>{r.error.slice(0, 80)}</div>}</td>

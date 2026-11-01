@@ -22,6 +22,7 @@ from .auth import COOKIE, Auth, Identity, make_authorizer
 from .oidc import Oidc, OidcError, new_login
 from .sentry import SORTS as SENTRY_SORTS
 from .sentry import Sentry
+from .cloudwatch import CloudWatch
 from .passwords import hash_password, password_problem
 from .checks import CheckRunner
 from .config import Config, ConfigError, ServerView
@@ -100,7 +101,8 @@ class Runtime:
 
 
 def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
-               loki: "dict[str, Prom] | None" = None, sentry: "dict[str, Any] | None" = None) -> FastAPI:
+               loki: "dict[str, Prom] | None" = None, sentry: "dict[str, Any] | None" = None,
+               cloudwatch: "dict[str, Any] | None" = None) -> FastAPI:
     allow_no_auth = os.environ.get("NIGRANI_ALLOW_NO_AUTH") == "1"
     if not cfg.auth.password and not allow_no_auth:
         raise ConfigError("auth.password is empty. Set NIGRANI_PASSWORD (NIGRANI_ALLOW_NO_AUTH=1 is for local dev only).")
@@ -119,13 +121,14 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
     lokis = loki if loki is not None else {
         v.id: Prom(v.datasources.loki.rstrip("/") + "/loki", v.datasources.timeout) for v in views if v.datasources.loki}
     sentries = sentry if sentry is not None else {v.id: Sentry(v.sentry, v.datasources.timeout) for v in views if v.sentry.enabled}
-    engine = Engine(store, proms, notifier, cfg, lokis=lokis, sentries=sentries)
+    clouds = cloudwatch if cloudwatch is not None else {v.id: CloudWatch(v.cloudwatch, v.datasources.timeout) for v in views if v.cloudwatch.enabled}
+    engine = Engine(store, proms, notifier, cfg, lokis=lokis, sentries=sentries, clouds=clouds)
 
     def datasources_available() -> set[str]:
-        return {"prometheus"} | ({"loki"} if lokis else set()) | ({"sentry"} if sentries else set())
+        return {"prometheus"} | ({"loki"} if lokis else set()) | ({"sentry"} if sentries else set()) | ({"cloudwatch"} if clouds else set())
 
     def client_for(datasource: str, server_id: str, prom: Any) -> Any:
-        return {"loki": lokis, "sentry": sentries}.get(datasource, {server_id: prom}).get(server_id)
+        return {"loki": lokis, "sentry": sentries, "cloudwatch": clouds}.get(datasource, {server_id: prom}).get(server_id)
     runtimes: dict[str, Runtime] = {
         v.id: Runtime(v, proms[v.id], CheckRunner(cfg, store, engine, v), GithubDeploys(v.github))
         for v in views if v.id in proms
@@ -192,7 +195,7 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-        for p in [*proms.values(), *lokis.values(), *sentries.values()]:
+        for p in [*proms.values(), *lokis.values(), *sentries.values(), *clouds.values()]:
             await p.close()
 
     app = FastAPI(title="Nigrani", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -282,7 +285,7 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
             "servers": [{"id": rt.view.id, "name": rt.view.name, "environment": rt.view.environment,
                          "logs": bool(rt.view.datasources.loki), "deploys": rt.github.enabled,
                          "grafana": bool(rt.view.grafana.url), "sentry": rt.view.id in sentries,
-                         "datasources": ["prometheus"] + (["loki"] if rt.view.id in lokis else []) + (["sentry"] if rt.view.id in sentries else []),
+                         "datasources": ["prometheus"] + (["loki"] if rt.view.id in lokis else []) + (["sentry"] if rt.view.id in sentries else []) + (["cloudwatch"] if rt.view.id in clouds else []),
                          "checks": bool(rt.view.checks)} for rt in runtimes.values()],
             "features": {"logs": any(rt.view.datasources.loki for rt in runtimes.values()),
                          "deploys": any(rt.github.enabled for rt in runtimes.values()),

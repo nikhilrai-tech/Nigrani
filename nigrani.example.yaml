@@ -35,6 +35,7 @@ datasources:
 #   celery    celery-exporter            workers, queue length, failures
 #   logs      Loki (datasources.loki)    error-spike alert per container (LogQL rule)
 #   sentry    Sentry (sentry:)           new-issue and fatal-issue alerts
+#   cloudwatch AWS CloudWatch (cloudwatch:) RDS and EC2 alerts read straight from CloudWatch
 presets: [core, django, redis, celery]
 
 # Optional. Containers you consider critical: if one stops, you get a "Container down" alert.
@@ -103,6 +104,14 @@ digest:
 #   org: my-org
 #   token: ${SENTRY_TOKEN}         # scopes: project:read, event:read
 #   projects: []                   # empty = all projects
+
+# AWS CloudWatch metrics as alert rules (datasource: cloudwatch). Optional.
+# cloudwatch:
+#   region: ap-south-1
+#   access_key_id: ${AWS_ACCESS_KEY_ID}          # omit all three to use the AWS_* variables or the EC2 instance role
+#   secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+#   session_token: ""
+#   endpoint_url: ""                              # only for a VPC endpoint
 
 alerts:
   eval_interval: 30              # seconds between rule evaluations
