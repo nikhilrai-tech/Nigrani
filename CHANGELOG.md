@@ -15,6 +15,9 @@ All notable changes to this project are documented here. The format follows
 - **Sentry** (`sentry:` config): a Sentry page (search, sort, unresolved / new / fatal tiles), a `sentry` data source for
   alert rules where the value is the number of matching issues per project, a `sentry` preset, and the matching issues
   on an incident's page. Works with sentry.io and self-hosted Sentry.
+- **AWS CloudWatch** (`cloudwatch:` config): a `cloudwatch` data source for alert rules (`AWS/RDS CPUUtilization{DBInstanceIdentifier="*"} stat=Maximum period=300`),
+  one alert per resource, a `cloudwatch` preset (RDS CPU and storage, EC2 CPU and status check), and the metric charted on
+  the incident page. Credentials from the config, the environment or the EC2 instance role; no AWS SDK needed.
 - Grafana links (`grafana:` config): "Open in Grafana" opens Explore with an alert's query and time range, and your own
   dashboards are linked from the incident, container, host and overview screens, with `{container}`, `{from}`, `{to}`
   and other placeholders.

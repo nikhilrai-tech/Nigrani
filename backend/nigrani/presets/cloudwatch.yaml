@@ -1,0 +1,40 @@
+# Needs: the `cloudwatch:` block in the config (region, and credentials unless the host has an instance role). Rules in this
+# preset read AWS CloudWatch directly, one alert per database or instance (the "*" matches every one that exists). Servers
+# without CloudWatch skip them. The older `rds` preset does the same through yet-another-cloudwatch-exporter and Prometheus.
+rules:
+  - id: aws-rds-cpu
+    name: AWS RDS CPU high
+    datasource: cloudwatch
+    expr: AWS/RDS CPUUtilization{DBInstanceIdentifier="*"} stat=Maximum period=300
+    warn: 75
+    crit: 90
+    for_seconds: 600
+    unit: percent
+    summary: The database instance CPU is saturated.
+  - id: aws-rds-storage
+    name: AWS RDS free storage low
+    datasource: cloudwatch
+    expr: AWS/RDS FreeStorageSpace{DBInstanceIdentifier="*"} stat=Minimum period=300
+    direction: below
+    warn: 10000000000
+    crit: 3000000000
+    for_seconds: 600
+    unit: bytes
+    summary: The database is running out of storage.
+  - id: aws-ec2-cpu
+    name: AWS EC2 CPU high
+    datasource: cloudwatch
+    expr: AWS/EC2 CPUUtilization{InstanceId="*"} stat=Maximum period=300
+    warn: 85
+    crit: 95
+    for_seconds: 900
+    unit: percent
+    summary: The instance CPU is saturated.
+  - id: aws-ec2-status-check
+    name: AWS EC2 status check failed
+    datasource: cloudwatch
+    expr: AWS/EC2 StatusCheckFailed{InstanceId="*"} stat=Maximum period=60
+    crit: 0
+    for_seconds: 120
+    unit: short
+    summary: AWS reports a failed system or instance status check for this instance.
