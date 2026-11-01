@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-02
+
 ### Added
 - **Azure Monitor** (`azure:` config, read-only): an `azure` data source for alert rules (`Microsoft.Compute/virtualMachines
   "Percentage CPU" aggregation=Maximum`), one alert per resource of a type, an `azure` preset (VM, PostgreSQL, SQL,
