@@ -6,7 +6,7 @@ import { Badge, Card, Empty, ErrorNote, Modal, Seg, SevBadge, Toggle } from '../
 import { fmtAgo, fmtDateTime, fmtDuration, fmtValue } from '../format';
 
 const SOURCE_LABEL = { prometheus: 'Prometheus (metrics, PromQL)', loki: 'Loki (logs, LogQL)', sentry: 'Sentry (errors, issue search)', cloudwatch: 'AWS CloudWatch (metrics)', kubernetes: 'Kubernetes (pods, nodes, deployments)', datadog: 'Datadog (metrics)', azure: 'Azure Monitor (metrics)' };
-const UNITS = ['short', 'percent', 'bytes', 'seconds', 'ms', 'days', 'rps'];
+const UNITS = ['short', 'percent', 'ratio', 'bytes', 'seconds', 'ms', 'days', 'rps'];
 const BLANK = { name: '', expr: '', datasource: 'prometheus', direction: 'above', warn: '', crit: '', for_seconds: 300, unit: 'short', summary: '', enabled: true };
 const num = (v) => (v === '' || v == null ? null : Number(v));
 const splitIds = (t) => t.split(',').map((x) => x.trim()).filter(Boolean);

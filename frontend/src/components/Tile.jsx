@@ -3,7 +3,7 @@ import { fmtValue } from '../format';
 
 /** A metric tile: value, trend, and the warn/crit thresholds drawn right on the bar. */
 export default function Tile({ t }) {
-  const max = t.unit === 'percent' ? 100 : Math.max(t.crit ?? t.warn ?? 1, t.value ?? 0) * 1.25 || 1;
+  const max = t.unit === 'percent' ? 100 : t.unit === 'ratio' ? 1 : Math.max(t.crit ?? t.warn ?? 1, t.value ?? 0) * 1.25 || 1;
   const hasThr = t.warn != null || t.crit != null;
   return (
     <div className={`card tile ${t.status === 'warn' ? 'warn' : t.status === 'crit' ? 'crit' : ''}`} title={t.description || ''}>

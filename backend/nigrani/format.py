@@ -31,6 +31,8 @@ def fmt_duration(seconds: float) -> str:
 def fmt_value(v: float | None, unit: str = "short") -> str:
     if v is None:
         return "—"
+    if unit == "ratio":
+        return f"{v * 100:.1f}%"
     if unit == "percent":
         return f"{v:.1f}%"
     if unit == "bytes":
