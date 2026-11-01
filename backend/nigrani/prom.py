@@ -59,9 +59,12 @@ class Prom:
         self.last_ok = time.time()
         return body["data"]
 
-    async def instant(self, query: str) -> list[dict[str, Any]]:
-        """-> [{"labels": {...}, "value": float|None}]"""
-        data = await self._get("/api/v1/query", {"query": query})
+    async def instant(self, query: str, at: float | None = None) -> list[dict[str, Any]]:
+        """-> [{"labels": {...}, "value": float|None}]  (evaluated at `at`, default now)"""
+        params: dict[str, Any] = {"query": query}
+        if at is not None:
+            params["time"] = at
+        data = await self._get("/api/v1/query", params)
         out = []
         for r in data.get("result", []):
             if "value" in r:

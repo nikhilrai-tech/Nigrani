@@ -30,6 +30,7 @@ silently stops. Nigrani answers the operational questions directly:
 | **Containers** | Every container: status, CPU, memory (vs limit), restarts, uptime, network. Click for charts and logs. Auto-detects stopped containers |
 | **Host** | CPU, memory, load, network, disk I/O, per-filesystem usage with **days-until-full forecast** |
 | **Service pages** | Traffic (Django), Redis, Postgres, AWS RDS, MQTT, Celery out of the box. Add your own pages in YAML |
+| **Incident page** | Click any alert for everything around it: lifecycle timeline, the metric with thresholds, the container's CPU/memory and logs, deploys and restarts just before it started, and other alerts that fired at the same time ("What changed?") |
 | **Alerts** | Rules editable in the UI (thresholds, duration, PromQL with live preview), silences, and an **incident timeline** showing when each alert started, how long it lasted and what its peak was |
 | **Integrations** | Slack, Teams, Discord, Telegram, Email, WhatsApp (Twilio), signed webhook. Per-channel severity + quiet hours, "send test" button |
 | **Uptime** | HTTP / TCP / TLS-certificate-expiry checks with 30-day uptime and an optional public status page |
@@ -210,6 +211,9 @@ Behaviour worth knowing:
 
 - **Pending → firing:** nothing is sent until the condition holds for `for_seconds`.
 - **De-duplicated:** one message when it starts, one when it's resolved. Reminders every `alerts.repeat_interval`.
+- **Preset rules stay current.** Preset rules are written to the database once so you can tune them. A fix shipped in a
+  later release reaches rules you have **not** edited (it is applied on startup and logged); a rule whose expression or
+  thresholds you changed is never overwritten.
 - **Escalation:** warning → critical sends a new message.
 - **Acknowledge:** on the Alerts page, *Acknowledge* (with an optional note, for 1h / 4h / 24h or until it resolves)
   tells your channels "✋ X is on it" once and pauses that alert's reminders. If it gets worse (warning to critical)

@@ -24,8 +24,9 @@ export function align(series) {
 }
 
 const NO_MARKERS = [];
+const NO_THRESHOLDS = [];
 
-export default function Chart({ series, unit = 'short', kind = 'line', height = 190, markers = NO_MARKERS, theme, legend = true }) {
+export default function Chart({ series, unit = 'short', kind = 'line', height = 190, markers = NO_MARKERS, thresholds = NO_THRESHOLDS, theme, legend = true }) {
   const host = useRef(null);
   const tip = useRef(null);
   const plot = useRef(null);
@@ -44,7 +45,7 @@ export default function Chart({ series, unit = 'short', kind = 'line', height = 
       legend: { show: false },
       scales: {
         x: { time: true },
-        y: { range: (_u, min, max) => [Math.min(0, min), unit === 'percent' ? Math.max(100, max) : (max > 0 ? max * 1.15 : 1)] },
+        y: { range: (_u, min, max) => { const top = Math.max(max, ...thresholds.map((t) => t.value)); return [Math.min(0, min), unit === 'percent' ? Math.max(100, top) : (top > 0 ? top * 1.15 : 1)]; } },
       },
       axes: [
         axis({ values: (_u, v) => v.map((t) => fmtClock(t)) }),
@@ -57,6 +58,16 @@ export default function Chart({ series, unit = 'short', kind = 'line', height = 
       hooks: {
         draw: [(u) => {
           const { ctx, bbox } = u;
+          thresholds.forEach((t) => {
+            const y = Math.round(u.valToPos(t.value, 'y', true));
+            if (y < bbox.top || y > bbox.top + bbox.height) return;
+            ctx.save();
+            ctx.strokeStyle = t.color; ctx.fillStyle = t.color; ctx.globalAlpha = 0.85; ctx.setLineDash([2, 4]); ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(bbox.left, y); ctx.lineTo(bbox.left + bbox.width, y); ctx.stroke();
+            ctx.setLineDash([]); ctx.font = `${11 * devicePixelRatio}px system-ui`; ctx.textAlign = 'right';
+            ctx.fillText(t.label, bbox.left + bbox.width - 4, y - 5 * devicePixelRatio);
+            ctx.restore();
+          });
           markers.forEach((m) => {
             const x = Math.round(u.valToPos(m.ts, 'x', true));
             if (x < bbox.left || x > bbox.left + bbox.width) return;
@@ -86,7 +97,7 @@ export default function Chart({ series, unit = 'short', kind = 'line', height = 
     const ro = new ResizeObserver(() => u.setSize({ width: el.clientWidth, height }));
     ro.observe(el);
     return () => { ro.disconnect(); u.destroy(); plot.current = null; };
-  }, [data, series, unit, kind, height, markers, theme, hasData]);
+  }, [data, series, unit, kind, height, markers, thresholds, theme, hasData]);
 
   if (!hasData) {
     return <div className="empty" style={{ padding: '28px 0' }}>No data in this range.</div>;

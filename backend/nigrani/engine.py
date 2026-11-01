@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from .config import Config
-from .format import build_event
+from .format import build_event, fmt_value
 from .notifiers import Notifier
 from .prom import Prom, PromError, series_key, series_label
 from .store import Store
@@ -116,6 +116,7 @@ class Engine:
         if self.store.is_silenced(sig.source_id, sig.series, now, sig.server):
             if st.incident_id:
                 self.store.update_incident(st.incident_id, silenced=1)
+                self.store.add_event(st.incident_id, now, "suppressed", f"{kind}: silenced, no message sent")
             return
         ev = build_event(
             kind, severity=st.severity or sig.severity or "warning", rule_name=sig.rule_name, series=sig.series,
@@ -136,6 +137,11 @@ class Engine:
         except Exception:  # noqa: BLE001 - never let a channel break evaluation
             log.exception("notification failed")
             res = {"wanted": 1, "ok": 0}
+        if st.incident_id and res and res.get("wanted") is not None:
+            self.store.add_event(
+                st.incident_id, now, "notified",
+                f"{kind}: no channel to notify" if res["wanted"] == 0
+                else f"{kind}: sent to {res['ok']} of {res['wanted']} channel{'' if res['wanted'] == 1 else 's'}")
         # every wanted channel failed (webhook down, typo...): try again on the next cycles instead of going silent
         if res and res["wanted"] and not res["ok"] and kind not in ("resolved", "acknowledged") and st.retries < MAX_RETRIES:
             st.retry_kind, st.retries = kind, st.retries + 1
@@ -166,11 +172,13 @@ class Engine:
         # already firing
         if sig.severity != st.severity:
             escalated = SEV_RANK[sig.severity] > SEV_RANK[st.severity or "warning"]
+            self.store.add_event(st.incident_id, now, "severity", f"{st.severity} → {sig.severity} ({fmt_value(sig.value, sig.unit)})")
             st.severity = sig.severity
             self.store.update_incident(st.incident_id, severity=sig.severity, threshold=sig.threshold)
             if escalated:
                 if st.acked_at is not None:      # it got worse: whoever acknowledged it needs to look again
                     self._clear_ack(st)
+                    self.store.add_event(st.incident_id, now, "unacknowledged", "it got worse")
                 await self._notify("escalated", st, sig, now)
         peak = self._peak(st.incident_id, sig)
         self.store.update_incident(st.incident_id, last_value=sig.value, peak_value=peak)
@@ -202,6 +210,7 @@ class Engine:
             return None
         until = now + hours * 3600 if hours else None
         self.store.ack_incident(incident_id, by, note, until, now)
+        self.store.add_event(incident_id, now, "acknowledged", f"{by}: {note}" if note else by)
         found = self._find(incident_id)
         if found:
             _, st = found
@@ -221,6 +230,7 @@ class Engine:
             self._clear_ack(found[1])
         else:
             self.store.clear_ack(incident_id)
+        self.store.add_event(incident_id, self.clock(), "unacknowledged", "")
         return self.store.get_incident(incident_id)
 
     def _peak(self, incident_id: int | None, sig: Signal) -> float | None:
@@ -238,11 +248,17 @@ class Engine:
             labels=sig.labels, severity=sig.severity, started_at=now, value=sig.value, threshold=sig.threshold,
             unit=sig.unit, summary=sig.summary, server=sig.server,
         )
+        detail = fmt_value(sig.value, sig.unit) if sig.value is not None else sig.summary
+        if sig.threshold is not None and sig.value is not None:
+            detail += f" (threshold {fmt_value(sig.threshold, sig.unit)})"
+        self.store.add_event(st.incident_id, now, "firing", f"{sig.severity}: {detail}")
         await self._notify("firing", st, sig, now)
 
     async def _resolve(self, key: Key, st: SeriesState, sig: Signal, now: float) -> None:
         if st.firing and st.incident_id:
             self.store.resolve_incident(st.incident_id, now, sig.value)   # keeps the incident's last_value if None
+            self.store.add_event(st.incident_id, now, "resolved",
+                                 f"back to {fmt_value(sig.value, sig.unit)}" if sig.value is not None else "no longer reported")
             # keep the rule's identity from the firing signal but report the recovered value
             base = st.signal or sig
             sig_for_event = Signal(**{**base.__dict__, "value": sig.value})

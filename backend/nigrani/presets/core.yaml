@@ -66,7 +66,9 @@ rules:
     summary: Prometheus cannot scrape this target, so the service or its exporter is down.
   - id: container-restarts
     name: Container restarting
-    expr: max by (name) (changes(container_start_time_seconds{name!=""}[10m]))
+    # cAdvisor labels every docker container with its RestartCount, so each restart (or re-creation) of a container is a
+    # new series; counting the distinct incarnations seen in the window gives the number of restarts.
+    expr: count by (name) (count by (name, id, container_label_restartcount) (last_over_time(container_start_time_seconds{name!=""}[10m]))) - 1
     warn: 2
     crit: 4
     for_seconds: 0

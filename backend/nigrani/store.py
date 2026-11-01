@@ -8,6 +8,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .fingerprint import fingerprint
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS rules (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, expr TEXT NOT NULL,
@@ -15,7 +17,7 @@ CREATE TABLE IF NOT EXISTS rules (
   for_seconds INTEGER NOT NULL DEFAULT 300, unit TEXT NOT NULL DEFAULT 'short',
   summary TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1,
   source TEXT NOT NULL DEFAULT 'custom', updated_at REAL, servers TEXT NOT NULL DEFAULT '[]',
-  datasource TEXT NOT NULL DEFAULT 'prometheus'
+  datasource TEXT NOT NULL DEFAULT 'prometheus', preset_hash TEXT
 );
 CREATE TABLE IF NOT EXISTS channels (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, settings TEXT NOT NULL DEFAULT '{}',
@@ -41,6 +43,11 @@ CREATE TABLE IF NOT EXISTS check_results (
   check_id TEXT NOT NULL, ts REAL NOT NULL, ok INTEGER NOT NULL, latency_ms REAL, detail TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_checks ON check_results(check_id, ts);
+CREATE TABLE IF NOT EXISTS incident_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, incident_id INTEGER NOT NULL, ts REAL NOT NULL, kind TEXT NOT NULL,
+  detail TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS ix_incident_events ON incident_events(incident_id, ts);
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
 """
 
@@ -66,7 +73,8 @@ class Store:
     def _migrate(self) -> None:
         """Add columns introduced after the first release to databases created by older versions."""
         wanted = {
-            "rules": [("servers", "TEXT NOT NULL DEFAULT '[]'"), ("datasource", "TEXT NOT NULL DEFAULT 'prometheus'")],
+            "rules": [("servers", "TEXT NOT NULL DEFAULT '[]'"), ("datasource", "TEXT NOT NULL DEFAULT 'prometheus'"),
+                      ("preset_hash", "TEXT")],
             "channels": [("servers", "TEXT NOT NULL DEFAULT '[]'"), ("title_template", "TEXT"), ("body_template", "TEXT")],
             "incidents": [("server", "TEXT NOT NULL DEFAULT 'default'"), ("acked_at", "REAL"), ("acked_by", "TEXT"),
                       ("ack_note", "TEXT"), ("ack_until", "REAL")],
@@ -106,6 +114,34 @@ class Store:
              r["unit"], r.get("summary", ""), int(r.get("enabled", True)), "preset", time.time(),
              json.dumps(r.get("servers") or []), r.get("datasource", "prometheus")),
         )
+
+    def sync_preset_rule(self, r: dict[str, Any], legacy: frozenset[str] | set[str] = frozenset()) -> str:
+        """Seed a preset rule, and carry a later fix to the preset over to rows nobody has edited.
+
+        Returns "created", "updated" or "kept". `preset_hash` is the fingerprint of the definition last written from
+        the preset; a row whose current fingerprint still equals it is unedited. Rows from before this existed have no
+        hash and count as unedited only if they match something a released version shipped (`legacy`)."""
+        shipped = fingerprint(r)
+        row = self.get_rule(r["id"])
+        if row is None:
+            self.seed_rule(r)
+            self._x("UPDATE rules SET preset_hash=? WHERE id=?", (shipped, r["id"]))
+            return "created"
+        if row["source"] != "preset":
+            return "kept"
+        current = fingerprint(row)
+        unedited = (current == row["preset_hash"]) if row["preset_hash"] else (current in legacy)
+        if not unedited:
+            return "kept"
+        if current == shipped:
+            self._x("UPDATE rules SET preset_hash=? WHERE id=?", (shipped, r["id"]))
+            return "kept"
+        self._x(
+            "UPDATE rules SET name=?, expr=?, direction=?, warn=?, crit=?, for_seconds=?, unit=?, summary=?, datasource=?,"
+            " preset_hash=?, updated_at=? WHERE id=?",   # `enabled` and `servers` stay as the user set them
+            (r["name"], r["expr"], r["direction"], r.get("warn"), r.get("crit"), r["for_seconds"], r["unit"],
+             r.get("summary", ""), r.get("datasource", "prometheus"), shipped, time.time(), r["id"]))
+        return "updated"
 
     def save_rule(self, r: dict[str, Any]) -> dict[str, Any]:
         self._x(
@@ -204,6 +240,13 @@ class Store:
         self._x("UPDATE incidents SET status='resolved', resolved_at=?, last_value=COALESCE(?, last_value) WHERE id=?",
                 (now, last_value, incident_id))
 
+    def add_event(self, incident_id: int, ts: float, kind: str, detail: str = "") -> None:
+        self._x("INSERT INTO incident_events(incident_id,ts,kind,detail) VALUES(?,?,?,?)", (incident_id, ts, kind, detail))
+
+    def list_events(self, incident_id: int) -> list[dict[str, Any]]:
+        return [dict(r) for r in self._q(
+            "SELECT ts, kind, detail FROM incident_events WHERE incident_id=? ORDER BY ts, id", (incident_id,))]
+
     def ack_incident(self, incident_id: int, by: str, note: str, until: float | None, now: float) -> None:
         self._x("UPDATE incidents SET acked_at=?, acked_by=?, ack_note=?, ack_until=? WHERE id=? AND status='firing'",
                 (now, by, note, until, incident_id))
@@ -285,3 +328,4 @@ class Store:
         self._x("DELETE FROM check_results WHERE ts < ?", (cutoff,))
         self._x("DELETE FROM incidents WHERE status='resolved' AND resolved_at < ?", (cutoff,))
         self._x("DELETE FROM silences WHERE until < ?", (time.time() - 86400,))
+        self._x("DELETE FROM incident_events WHERE incident_id NOT IN (SELECT id FROM incidents)")
