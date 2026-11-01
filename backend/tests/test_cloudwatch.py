@@ -11,7 +11,7 @@ from conftest import FakeProm
 from nigrani.api import create_app
 from nigrani.cloudwatch import CloudWatch, CloudWatchError, parse
 from nigrani.config import CloudWatchCfg, ConfigError, load_config
-from nigrani.prom import PromQueryError
+from nigrani.prom import PromQueryError, series_key
 from nigrani.sigv4 import Credentials, sign
 
 NS = "http://monitoring.amazonaws.com/doc/2010-08-01/"
@@ -264,8 +264,9 @@ def test_api_rule_preview_listing_and_incident_chart(tmp_path):
         prev = c.post("/api/rules/test", json=body, headers=H).json()
         assert prev["series"][0] == {"series": "db-a", "value": 95.5, "severity": "critical"}
         made = c.post("/api/rules", json=body, headers=H).json()
-        iid = c.app.state.store.create_incident(source_id=made["id"], series_key="DBInstanceIdentifier=db-a", rule_name="RDS CPU", series="db-a",
-                                                labels={"DBInstanceIdentifier": "db-a"}, severity="critical", started_at=time.time() - 60, server="default")
+        labels = {"DBInstanceIdentifier": "db-a"}
+        iid = c.app.state.store.create_incident(source_id=made["id"], series_key=series_key(labels), rule_name="RDS CPU", series="db-a",
+                                                labels=labels, severity="critical", started_at=time.time() - 60, server="default")
         d = c.get(f"/api/incidents/{iid}").json()
         assert d["chart"]["series"][0]["name"] == "db-a" and d["problems"] == []
 
