@@ -162,7 +162,7 @@ class RuleCfg(_M):
     summary: str = ""
     enabled: bool = True
     servers: list[str] = Field(default_factory=list)  # empty = evaluate on every server
-    datasource: Literal["prometheus", "loki", "sentry"] = "prometheus"  # loki: LogQL metric query; sentry: a Sentry search
+    datasource: Literal["prometheus", "loki", "sentry", "cloudwatch"] = "prometheus"  # loki: LogQL metric query; sentry: a Sentry search
 
 
 ChannelType = Literal["slack", "teams", "discord", "telegram", "email", "webhook", "whatsapp"]
@@ -227,6 +227,33 @@ class StatusPageCfg(_M):
     title: str = "System status"
 
 
+class CloudWatchCfg(_M):
+    """AWS CloudWatch metrics. Credentials: these keys, else the AWS_* variables, else the EC2 instance role."""
+    region: str = ""  # e.g. ap-south-1; empty = CloudWatch not configured
+    access_key_id: str = ""
+    secret_access_key: str = ""
+    session_token: str = ""
+    endpoint_url: str = ""  # only for a VPC endpoint or a test double
+
+    @field_validator("region")
+    @classmethod
+    def _region(cls, v: str) -> str:
+        if v and not re.fullmatch(r"[a-z]{2}(-[a-z]+)+-\d", v):
+            raise ValueError("must look like ap-south-1")
+        return v
+
+    @field_validator("endpoint_url")
+    @classmethod
+    def _endpoint(cls, v: str) -> str:
+        if v and not re.match(r"^https?://[^\s]+$", v):
+            raise ValueError("must start with http:// or https://")
+        return v.rstrip("/")
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.region)
+
+
 class SentryCfg(_M):
     """Sentry (sentry.io or self-hosted): its issues become a page, and a Sentry search can drive an alert rule."""
     url: str = "https://sentry.io"
@@ -286,6 +313,7 @@ class ServerCfg(_M):
     github: GithubCfg | None = None
     grafana: GrafanaCfg | None = None
     sentry: SentryCfg | None = None
+    cloudwatch: CloudWatchCfg | None = None
 
     @field_validator("id")
     @classmethod
@@ -307,6 +335,7 @@ class ServerView:
     github: GithubCfg
     grafana: GrafanaCfg
     sentry: SentryCfg
+    cloudwatch: CloudWatchCfg
 
 
 class Config(_M):
@@ -326,6 +355,7 @@ class Config(_M):
     github: GithubCfg = GithubCfg()
     grafana: GrafanaCfg = GrafanaCfg()
     sentry: SentryCfg = SentryCfg()
+    cloudwatch: CloudWatchCfg = CloudWatchCfg()
     digest: DigestCfg = DigestCfg()
     alerts: AlertsCfg = AlertsCfg()
     status_page: StatusPageCfg = StatusPageCfg()
@@ -338,7 +368,7 @@ class Config(_M):
         if not self.servers:
             env = self.app.environment
             return [ServerView("default", env or self.app.name, env, self.datasources, self.services, self.checks,
-                               self.github, self.grafana, self.sentry)]
+                               self.github, self.grafana, self.sentry, self.cloudwatch)]
         return [
             ServerView(
                 s.id, s.name or s.id, s.environment or s.name or s.id,
@@ -348,6 +378,7 @@ class Config(_M):
                 s.github or self.github,
                 s.grafana or self.grafana,
                 s.sentry or self.sentry,
+                s.cloudwatch or self.cloudwatch,
             )
             for s in self.servers
         ]

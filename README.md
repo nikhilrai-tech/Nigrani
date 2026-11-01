@@ -30,6 +30,7 @@ silently stops. Nigrani answers the operational questions directly:
 | **Containers** | Every container: status, CPU, memory (vs limit), restarts, uptime, network. Click for charts and logs. Auto-detects stopped containers |
 | **Host** | CPU, memory, load, network, disk I/O, per-filesystem usage with **days-until-full forecast** |
 | **Sentry** | Unresolved, new and fatal issues on their own page, alert rules over Sentry searches, and the matching issues on an incident's page |
+| **AWS CloudWatch** | Alert rules straight on CloudWatch metrics (RDS, EC2, ELB, SQS, anything), one alert per database or instance, with the metric charted on the incident page. No exporter needed |
 | **Grafana links** | "Open in Grafana" from an alert, a rule or the Logs page (Explore with the same query and time range), plus links to your own dashboards from the incident, container, host and overview screens |
 | **Service pages** | Traffic (Django), Redis, Postgres, AWS RDS, MQTT, Celery out of the box. Add your own pages in YAML |
 | **Incident page** | Click any alert for everything around it: lifecycle timeline, the metric with thresholds, the container's CPU/memory and logs, deploys and restarts just before it started, and other alerts that fired at the same time ("What changed?") |
@@ -282,6 +283,40 @@ sentry:
   reason and no alert is resolved or raised because of it.
 - The **incident page** of a Sentry alert lists the matching issues with a link to the same search in Sentry.
 - With `servers:` each server can have its own `sentry:` block.
+
+## AWS CloudWatch
+
+Alert on AWS metrics without running an exporter. Nigrani calls CloudWatch directly (read-only) and signs requests itself,
+so there is no AWS SDK in the image.
+
+```yaml
+cloudwatch:
+  region: ap-south-1
+  access_key_id: ${AWS_ACCESS_KEY_ID}        # optional: see "Credentials"
+  secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+presets: [core, cloudwatch]                  # RDS CPU / storage, EC2 CPU / status check
+```
+
+A rule's data source is *cloudwatch* and its expression names a metric:
+
+```
+AWS/RDS CPUUtilization{DBInstanceIdentifier="*"} stat=Maximum period=300
+```
+
+- `Namespace MetricName`, then optional `{Dimension="value"}` pairs, then `stat=` (Average, Sum, Minimum, Maximum,
+  SampleCount or a percentile such as `p99`) and `period=` (seconds, a multiple of 60; default `Average` and 300).
+- `"*"` as a dimension value means every one that exists: one rule covers every database, and each gets its own alert.
+  Give the exact dimension names the metric is published with (a metric is matched by its full set of dimensions).
+  At most 50 series per rule.
+- The value is the latest datapoint. An alert resolves when the metric recovers, or when the resource has had no
+  datapoint for `absent_grace`.
+- **Credentials**, first match wins: the keys above, the `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` /
+  `AWS_SESSION_TOKEN` environment variables, then the EC2 instance role (IMDSv2), refreshed automatically. Prefer the
+  role on AWS. The identity needs only `cloudwatch:GetMetricData` and `cloudwatch:ListMetrics`.
+- If AWS refuses the credentials or CloudWatch is unavailable, the rule shows the reason and no alert is raised or
+  resolved because of it.
+- With `servers:` each server can have its own `cloudwatch:` block (for example another region or account).
+- `endpoint_url` points at a VPC endpoint if you use one.
 
 ## Grafana links
 
