@@ -162,7 +162,7 @@ class RuleCfg(_M):
     summary: str = ""
     enabled: bool = True
     servers: list[str] = Field(default_factory=list)  # empty = evaluate on every server
-    datasource: Literal["prometheus", "loki"] = "prometheus"  # loki = a LogQL metric query (rate/count_over_time)
+    datasource: Literal["prometheus", "loki", "sentry"] = "prometheus"  # loki: LogQL metric query; sentry: a Sentry search
 
 
 ChannelType = Literal["slack", "teams", "discord", "telegram", "email", "webhook", "whatsapp"]
@@ -227,6 +227,25 @@ class StatusPageCfg(_M):
     title: str = "System status"
 
 
+class SentryCfg(_M):
+    """Sentry (sentry.io or self-hosted): its issues become a page, and a Sentry search can drive an alert rule."""
+    url: str = "https://sentry.io"
+    org: str = ""  # organization slug; empty = Sentry not configured
+    token: str = ""  # an auth token with the project:read and event:read scopes (use ${SENTRY_TOKEN})
+    projects: list[str] = Field(default_factory=list)  # project slugs to limit to; empty = the whole organization
+
+    @field_validator("url")
+    @classmethod
+    def _url(cls, v: str) -> str:
+        if not re.match(r"^https?://[^\s]+$", v):
+            raise ValueError("must start with http:// or https://")
+        return v.rstrip("/")
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.org and self.token)
+
+
 class DashboardLink(_M):
     title: str
     url: str  # absolute, or relative to grafana.url; may use {container} {server} {rule} {series} {from} {to}
@@ -266,6 +285,7 @@ class ServerCfg(_M):
     checks: list[CheckCfg] | None = None
     github: GithubCfg | None = None
     grafana: GrafanaCfg | None = None
+    sentry: SentryCfg | None = None
 
     @field_validator("id")
     @classmethod
@@ -286,6 +306,7 @@ class ServerView:
     checks: list[CheckCfg]
     github: GithubCfg
     grafana: GrafanaCfg
+    sentry: SentryCfg
 
 
 class Config(_M):
@@ -304,6 +325,7 @@ class Config(_M):
     checks: list[CheckCfg] = Field(default_factory=list)
     github: GithubCfg = GithubCfg()
     grafana: GrafanaCfg = GrafanaCfg()
+    sentry: SentryCfg = SentryCfg()
     digest: DigestCfg = DigestCfg()
     alerts: AlertsCfg = AlertsCfg()
     status_page: StatusPageCfg = StatusPageCfg()
@@ -316,7 +338,7 @@ class Config(_M):
         if not self.servers:
             env = self.app.environment
             return [ServerView("default", env or self.app.name, env, self.datasources, self.services, self.checks,
-                               self.github, self.grafana)]
+                               self.github, self.grafana, self.sentry)]
         return [
             ServerView(
                 s.id, s.name or s.id, s.environment or s.name or s.id,
@@ -325,6 +347,7 @@ class Config(_M):
                 s.checks if s.checks is not None else self.checks,
                 s.github or self.github,
                 s.grafana or self.grafana,
+                s.sentry or self.sentry,
             )
             for s in self.servers
         ]

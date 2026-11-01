@@ -1,0 +1,21 @@
+# Needs: the `sentry:` block in the config (organization slug and an auth token). Rules in this preset are Sentry searches
+# evaluated against Sentry's API; the value is how many matching issues there are, per project. Servers without
+# Sentry skip them.
+rules:
+  - id: sentry-new-issues
+    name: New errors in Sentry
+    datasource: sentry
+    expr: is:unresolved firstSeen:-1h
+    warn: 0
+    crit: 10
+    for_seconds: 0
+    unit: short
+    summary: Issues that appeared for the first time in the last hour and are still unresolved. Open the Sentry page.
+  - id: sentry-fatal
+    name: Fatal errors in Sentry
+    datasource: sentry
+    expr: is:unresolved level:fatal lastSeen:-1h
+    crit: 0
+    for_seconds: 0
+    unit: short
+    summary: Unresolved issues of level fatal were seen in the last hour.

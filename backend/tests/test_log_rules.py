@@ -84,7 +84,7 @@ def test_api_preview_and_validation(tmp_path):
         ok = c.post("/api/rules/test?server=prod", json=body, headers=H).json()
         assert ok["count"] == 1 and ok["series"][0]["series"] == "api" and ok["series"][0]["severity"] == "warning"
         no = c.post("/api/rules/test?server=staging", json=body, headers=H)
-        assert no.status_code == 400 and "no Loki" in no.json()["detail"]
+        assert no.status_code == 400 and "no loki configured" in no.json()["detail"]
 
         made = c.post("/api/rules", json=body, headers=H).json()
         assert made["datasource"] == "loki"
@@ -98,7 +98,7 @@ def test_cannot_create_a_log_rule_when_no_server_has_loki(tmp_path):
         H = {"X-Requested-With": "nigrani"}
         c.post("/api/login", json={"username": "admin", "password": "pw"})
         r = c.post("/api/rules", json={"name": "L", "expr": "q", "crit": 1, "datasource": "loki"}, headers=H)
-        assert r.status_code == 422 and "Loki" in r.json()["detail"]
+        assert r.status_code == 422 and "loki" in r.json()["detail"]
 
 
 def test_log_alert_resolves_as_soon_as_the_lines_stop(tmp_path, store):

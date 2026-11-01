@@ -7,6 +7,7 @@ import { fmtAgo, fmtClock, fmtDateTime, fmtDuration, fmtValue } from '../format'
 import { buildTimeline, whatChanged } from '../incident';
 import { ExploreButton } from '../components/Grafana';
 import { AckModal } from './Alerts';
+import { IssueTable } from './Sentry';
 
 const ICON = { crit: 'alert', warn: 'alert', ok: 'check', info: 'activity', '': 'activity' };
 
@@ -171,6 +172,11 @@ export default function Incident({ id }) {
           <Card title={`${c.name}: CPU`}><Chart series={[{ name: 'CPU', points: c.cpu }]} unit="percent" kind="area" height={150} markers={markers} theme={theme} legend={false} /></Card>
           <Card title={`${c.name}: memory`}><Chart series={[{ name: 'Memory', points: c.mem }]} unit="bytes" kind="area" height={150} markers={markers} theme={theme} legend={false} /></Card>
         </div>
+      )}
+      {d.sentry && (
+        <Card title="Sentry issues" sub="matching this alert" flush actions={<a className="btn sm" href={d.sentry.search_url} target="_blank" rel="noopener noreferrer"><Icon name="external" size={13} />Open in Sentry</a>}>
+          {d.sentry.issues.length === 0 ? <Empty title="No matching issues right now" /> : <IssueTable issues={d.sentry.issues} compact />}
+        </Card>
       )}
       <div className="grid g2"><Timeline d={d} /><IncidentLogs d={d} /></div>
       {d.problems.length > 0 && <div className="hint">Some context could not be loaded: {d.problems.join('; ')}</div>}

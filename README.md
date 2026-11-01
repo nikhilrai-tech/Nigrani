@@ -29,6 +29,7 @@ silently stops. Nigrani answers the operational questions directly:
 | **Overview** | Status banner, key tiles with thresholds, CPU/memory trend, active alerts, uptime checks |
 | **Containers** | Every container: status, CPU, memory (vs limit), restarts, uptime, network. Click for charts and logs. Auto-detects stopped containers |
 | **Host** | CPU, memory, load, network, disk I/O, per-filesystem usage with **days-until-full forecast** |
+| **Sentry** | Unresolved, new and fatal issues on their own page, alert rules over Sentry searches, and the matching issues on an incident's page |
 | **Grafana links** | "Open in Grafana" from an alert, a rule or the Logs page (Explore with the same query and time range), plus links to your own dashboards from the incident, container, host and overview screens |
 | **Service pages** | Traffic (Django), Redis, Postgres, AWS RDS, MQTT, Celery out of the box. Add your own pages in YAML |
 | **Incident page** | Click any alert for everything around it: lifecycle timeline, the metric with thresholds, the container's CPU/memory and logs, deploys and restarts just before it started, and other alerts that fired at the same time ("What changed?") |
@@ -258,6 +259,29 @@ channels:
 Placeholders: `{emoji}` `{status}` `{severity}` `{rule}` `{series}` `{value}` `{threshold}` `{server}` `{environment}`
 `{duration}` `{summary}` `{link}` `{started_at}` `{kind}` `{acknowledged_by}` `{note}`, plus `{title}` and `{body}` for the default text (so you can
 extend it instead of replacing it). Digests are not templated.
+
+## Sentry
+
+Show application errors next to your infrastructure metrics. Nigrani reads issues from the Sentry API (sentry.io or self-hosted);
+it never writes to Sentry.
+
+```yaml
+sentry:
+  url: https://sentry.io              # self-hosted: your Sentry address
+  org: my-org                         # organization slug
+  token: ${SENTRY_TOKEN}              # internal integration or user token with project:read and event:read
+  projects: [api, worker]             # optional; empty = every project
+```
+
+- **Sentry page** lists issues with a search box (any [Sentry search](https://docs.sentry.io/concepts/search/), for example
+  `is:unresolved level:error`), sort order and tiles for unresolved, new in 1h, new in 24h and fatal.
+- **Rules**: choose the *sentry* data source and write a Sentry search as the expression. The value is the number of
+  matching issues per project, so "critical above 0" means "any". The `sentry` preset adds *New errors in Sentry*
+  (`is:unresolved firstSeen:-1h`, warning at 1, critical above 10) and *Fatal errors in Sentry*.
+- An alert resolves when no issue matches any more. If Sentry cannot be reached or refuses the token, the rule shows that
+  reason and no alert is resolved or raised because of it.
+- The **incident page** of a Sentry alert lists the matching issues with a link to the same search in Sentry.
+- With `servers:` each server can have its own `sentry:` block.
 
 ## Grafana links
 

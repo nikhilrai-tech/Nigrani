@@ -104,7 +104,7 @@ def _problem(e: ValidationError) -> str:
                      for err in e.errors())
 
 
-def plan_import(store: Store, data: Any, *, mode: Mode, server_ids: set[str], has_loki: bool) -> Plan:
+def plan_import(store: Store, data: Any, *, mode: Mode, server_ids: set[str], datasources: set[str]) -> Plan:
     plan = Plan(mode=mode)
     if not isinstance(data, dict) or data.get("nigrani_backup") != BACKUP_VERSION:
         plan.errors.append("this is not a Nigrani backup file (or it was made by a newer version)")
@@ -135,8 +135,8 @@ def plan_import(store: Store, data: Any, *, mode: Mode, server_ids: set[str], ha
             plan.errors.append("a rule has no id")
             continue
         err = rule_problem(rule) or unknown(rule.servers)
-        if not err and rule.datasource == "loki" and not has_loki:
-            err = "uses Loki but no server has Loki configured"
+        if not err and rule.datasource not in datasources:
+            err = f"uses {rule.datasource} but no server has it configured"
         if not err and ("rule", rule.id) in seen:
             err = "appears twice in the file"
         if err:

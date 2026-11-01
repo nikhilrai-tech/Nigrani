@@ -20,6 +20,8 @@ from pydantic import BaseModel, Field, field_validator
 from . import __version__
 from .auth import COOKIE, Auth, Identity, make_authorizer
 from .oidc import Oidc, OidcError, new_login
+from .sentry import SORTS as SENTRY_SORTS
+from .sentry import Sentry
 from .passwords import hash_password, password_problem
 from .checks import CheckRunner
 from .config import Config, ConfigError, ServerView
@@ -98,7 +100,7 @@ class Runtime:
 
 
 def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
-               loki: "dict[str, Prom] | None" = None) -> FastAPI:
+               loki: "dict[str, Prom] | None" = None, sentry: "dict[str, Any] | None" = None) -> FastAPI:
     allow_no_auth = os.environ.get("NIGRANI_ALLOW_NO_AUTH") == "1"
     if not cfg.auth.password and not allow_no_auth:
         raise ConfigError("auth.password is empty. Set NIGRANI_PASSWORD (NIGRANI_ALLOW_NO_AUTH=1 is for local dev only).")
@@ -116,7 +118,14 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
     # client serves log-based alert rules.
     lokis = loki if loki is not None else {
         v.id: Prom(v.datasources.loki.rstrip("/") + "/loki", v.datasources.timeout) for v in views if v.datasources.loki}
-    engine = Engine(store, proms, notifier, cfg, lokis=lokis)
+    sentries = sentry if sentry is not None else {v.id: Sentry(v.sentry, v.datasources.timeout) for v in views if v.sentry.enabled}
+    engine = Engine(store, proms, notifier, cfg, lokis=lokis, sentries=sentries)
+
+    def datasources_available() -> set[str]:
+        return {"prometheus"} | ({"loki"} if lokis else set()) | ({"sentry"} if sentries else set())
+
+    def client_for(datasource: str, server_id: str, prom: Any) -> Any:
+        return {"loki": lokis, "sentry": sentries}.get(datasource, {server_id: prom}).get(server_id)
     runtimes: dict[str, Runtime] = {
         v.id: Runtime(v, proms[v.id], CheckRunner(cfg, store, engine, v), GithubDeploys(v.github))
         for v in views if v.id in proms
@@ -183,7 +192,7 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-        for p in [*proms.values(), *lokis.values()]:
+        for p in [*proms.values(), *lokis.values(), *sentries.values()]:
             await p.close()
 
     app = FastAPI(title="Nigrani", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -272,7 +281,8 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
             "default_server": default_id,
             "servers": [{"id": rt.view.id, "name": rt.view.name, "environment": rt.view.environment,
                          "logs": bool(rt.view.datasources.loki), "deploys": rt.github.enabled,
-                         "grafana": bool(rt.view.grafana.url),
+                         "grafana": bool(rt.view.grafana.url), "sentry": rt.view.id in sentries,
+                         "datasources": ["prometheus"] + (["loki"] if rt.view.id in lokis else []) + (["sentry"] if rt.view.id in sentries else []),
                          "checks": bool(rt.view.checks)} for rt in runtimes.values()],
             "features": {"logs": any(rt.view.datasources.loki for rt in runtimes.values()),
                          "deploys": any(rt.github.enabled for rt in runtimes.values()),
@@ -525,8 +535,8 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
 
     def _validate_rule(r: RuleIn) -> None:
         _check_servers(r.servers)
-        if r.datasource == "loki" and not lokis:
-            raise HTTPException(422, "no server has Loki configured (datasources.loki), so a log rule can't be evaluated")
+        if r.datasource not in datasources_available():
+            raise HTTPException(422, f"no server has {r.datasource} configured, so this rule can't be evaluated")
         problem = rule_problem(r)
         if problem:
             raise HTTPException(422, problem)
@@ -560,9 +570,9 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
 
     @secured.post("/rules/test")
     async def test_rule(r: RuleIn, rt: Runtime = Depends(srv)) -> dict[str, Any]:
-        client = rt.prom if r.datasource == "prometheus" else lokis.get(rt.view.id)
+        client = client_for(r.datasource, rt.view.id, rt.prom)
         if client is None:
-            raise HTTPException(400, f"{rt.view.name} has no Loki configured (datasources.loki)")
+            raise HTTPException(400, f"{rt.view.name} has no {r.datasource} configured")
         try:
             res = await client.instant(r.expr)
         except PromError as e:
@@ -602,8 +612,8 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
 
         rule = store.get_rule(inc["source_id"])
         if rule:
-            client = rt.prom if rule["datasource"] == "prometheus" else lokis.get(inc["server"])
-            if client is not None:
+            client = client_for(rule["datasource"], inc["server"], rt.prom)
+            if client is not None and rule["datasource"] != "sentry":
                 try:
                     res = await client.range(rule["expr"], start, end, step)
                     pick = [r for r in res if series_key(r["labels"]) == inc["series_key"]] or res[:3]
@@ -661,6 +671,13 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
                                                    rule=inc["rule_name"], series=inc["series"],
                                                    **{"from": start, "to": end}),
         }
+        sent = sentries.get(inc["server"])
+        if rule and rule["datasource"] == "sentry" and sent is not None:
+            query = rule["expr"] + (f' project:{inc["labels"]["project"]}' if inc["labels"].get("project") else "")
+            try:
+                out["sentry"] = {"issues": await sent.issues(query, limit=10, sort="date"), "search_url": sent.search_url(query)}
+            except PromError as e:
+                problems.append(f"sentry: {e}")
         out["related"] = [
             {k: i[k] for k in ("id", "rule_name", "series", "severity", "status", "started_at", "resolved_at", "server")}
             for i in store.recent_incidents(200, inc["started_at"] - 900)
@@ -900,7 +917,7 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
             data = await request.json()
         except ValueError as e:
             raise HTTPException(400, "the file is not valid JSON") from e
-        plan = backup_mod.plan_import(store, data, mode=mode, server_ids=set(runtimes), has_loki=bool(lokis))
+        plan = backup_mod.plan_import(store, data, mode=mode, server_ids=set(runtimes), datasources=datasources_available())
         if dry_run:
             return plan.view()
         if plan.errors:
@@ -926,6 +943,36 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
             "links": grafana_links.dashboard_links(g, context, container=container or None, server=rt.view.id,
                                                    **{"from": now - minutes * 60, "to": now}),
         }
+
+    # ---------------- sentry ----------------
+    def _sentry(rt: Runtime) -> Sentry:
+        s = sentries.get(rt.view.id)
+        if s is None:
+            raise HTTPException(404, f"Sentry is not configured for {rt.view.name} (sentry.org and sentry.token)")
+        return s
+
+    @secured.get("/sentry/issues")
+    async def sentry_issues(query: str = Query("is:unresolved", max_length=500), sort: str = "date",
+                            limit: int = Query(25, ge=1, le=100), rt: Runtime = Depends(srv)) -> dict[str, Any]:
+        s = _sentry(rt)
+        if sort not in SENTRY_SORTS:
+            raise HTTPException(400, f"sort must be one of {', '.join(SENTRY_SORTS)}")
+        try:
+            issues = await s.issues(query, limit=limit, sort=sort)
+        except PromError as e:
+            raise _prom_guard(e) from e
+        return {"issues": issues, "search_url": s.search_url(query), "org": s.cfg.org, "projects": s.cfg.projects}
+
+    @secured.get("/sentry/summary")
+    async def sentry_summary(rt: Runtime = Depends(srv)) -> dict[str, Any]:
+        s = _sentry(rt)
+        queries = {"unresolved": "is:unresolved", "new_1h": "is:unresolved firstSeen:-1h",
+                   "new_24h": "is:unresolved firstSeen:-24h", "fatal": "is:unresolved level:fatal"}
+        try:
+            results = await asyncio.gather(*(s.issues(q, limit=100) for q in queries.values()))
+        except PromError as e:
+            raise _prom_guard(e) from e
+        return {k: {"count": len(r), "capped": len(r) >= 100} for k, r in zip(queries, results)}
 
     @secured.get("/checks")
     async def get_checks(rt: Runtime = Depends(srv)) -> list[dict[str, Any]]:

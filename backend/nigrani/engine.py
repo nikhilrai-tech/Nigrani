@@ -6,7 +6,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Any, Callable
 
 from .config import Config
 from .format import build_event, fmt_value
@@ -68,9 +68,11 @@ def classify(value: float, direction: str, warn: float | None, crit: float | Non
 
 class Engine:
     def __init__(self, store: Store, proms: dict[str, Prom] | Prom, notifier: Notifier, cfg: Config,
-                 clock: Callable[[], float] = time.time, lokis: dict[str, Prom] | None = None):
+                 clock: Callable[[], float] = time.time, lokis: dict[str, Prom] | None = None,
+                 sentries: dict[str, Any] | None = None):
         self.store, self.notifier, self.cfg, self.clock = store, notifier, cfg, clock
         self.lokis: dict[str, Prom] = lokis or {}  # server id -> Loki client (only servers that have Loki)
+        self.sentries: dict[str, Any] = sentries or {}  # server id -> Sentry client (same interface as Prom)
         self.proms: dict[str, Prom] = proms if isinstance(proms, dict) else {"default": proms}
         views = {v.id: v for v in cfg.server_views()}
         self.names = {sid: views[sid].name if sid in views else sid for sid in self.proms}
@@ -273,6 +275,13 @@ class Engine:
         return Signal(**{**base.__dict__, "severity": None, "value": None})
 
     # ---------- evaluation ----------
+    def _client(self, datasource: str, server_id: str, prom: Prom) -> Any:
+        if datasource == "loki":
+            return self.lokis.get(server_id)
+        if datasource == "sentry":
+            return self.sentries.get(server_id)
+        return prom
+
     def drop_rule(self, rule_id: str, now: float | None = None, server: str | None = None) -> None:
         """Rule deleted/disabled/no longer scoped to `server`: close its open incidents quietly
         (nothing will ever resolve them otherwise)."""
@@ -302,7 +311,7 @@ class Engine:
                 if rule["servers"] and server_id not in rule["servers"]:
                     self.drop_rule(rule["id"], now, server_id)  # scope changed while incidents were open
                     continue
-                client = prom if rule.get("datasource", "prometheus") == "prometheus" else self.lokis.get(server_id)
+                client = self._client(rule.get("datasource", "prometheus"), server_id, prom)
                 if client is None:
                     # a log rule on a server without Loki: nothing to evaluate there (and nothing left open)
                     self.drop_rule(rule["id"], now, server_id)
@@ -331,7 +340,7 @@ class Engine:
                 # Series that vanished (container removed, exporter label change) resolve after a grace period.
                 # For a log rule a missing series just means "no matching lines", i.e. healthy: resolve at once
                 # (a Loki outage raises an error above instead, which never resolves anything).
-                grace = 0 if rule.get("datasource") == "loki" else self.cfg.alerts.absent_grace
+                grace = 0 if rule.get("datasource", "prometheus") != "prometheus" else self.cfg.alerts.absent_grace
                 for k in [k for k in self.state if k[0] == rule["id"] and k[1] == server_id and k not in seen]:
                     st = self.state[k]
                     if now - st.last_seen >= grace:
