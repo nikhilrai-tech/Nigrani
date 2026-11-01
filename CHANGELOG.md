@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Acknowledge an alert (`POST /api/incidents/{id}/ack`): pauses its reminders for a chosen time or until it resolves, tells
+  the channels who is on it, ends when the alert gets worse, and is credited in the resolved message. New
+  `{acknowledged_by}` and `{note}` template placeholders.
 - Backup and restore of rules, channels and silences (`GET /api/backup`, `POST /api/backup/import`, **Backup** page):
   credentials are omitted by default, import starts with a dry run, is all-or-nothing and never deletes.
 - Custom message templates per notification channel (`title_template` / `body_template` with placeholders such as

@@ -64,11 +64,15 @@ def build_event(
     link: str = "",
     incident_id: int | None = None,
     server: str = "",
+    ack_by: str = "",
+    ack_note: str = "",
 ) -> dict[str, Any]:
     what = f"{rule_name}" + (f" — {series}" if series else "")
     tag = f" [{server}]" if server else ""
     if kind == "resolved":
         title = f"✅ Resolved: {what}{tag}"
+    elif kind == "acknowledged":
+        title = f"✋ Acknowledged: {what}{tag}"
     elif kind == "test":
         title = f"🔔 Test notification from Nigrani ({environment})"
     else:
@@ -84,16 +88,22 @@ def build_event(
             if threshold is not None and kind != "test":
                 cur += f" (threshold {fmt_value(threshold, unit)})"
             lines.append(cur)
+    if kind == "acknowledged":
+        lines.append(f"{ack_by or 'Someone'} is on it" + (f": {ack_note}" if ack_note else "."))
     if kind in ("resolved", "reminder", "escalated"):
         lines.append(f"Duration: {fmt_duration(now - started_at)}")
+    if kind == "resolved" and ack_by:
+        lines.append(f"Acknowledged by {ack_by}.")
     if summary and kind not in ("resolved",):
         lines.append(summary)
     status = {"firing": "FIRING", "resolved": "RESOLVED", "escalated": "ESCALATED", "reminder": "REMINDER",
-              "test": "TEST"}.get(kind, kind.upper())
+              "acknowledged": "ACKNOWLEDGED", "test": "TEST"}.get(kind, kind.upper())
     shown = "resolved" if kind == "resolved" else severity
     return {
         "status": status,
-        "emoji": SEV_EMOJI.get(shown, ""),
+        "emoji": "✋" if kind == "acknowledged" else SEV_EMOJI.get(shown, ""),
+        "acknowledged_by": ack_by,
+        "note": ack_note,
         "value_text": fmt_value(value, unit) if value is not None else "",
         "threshold_text": fmt_value(threshold, unit) if threshold is not None else "",
         "duration": fmt_duration(now - started_at),

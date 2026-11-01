@@ -65,6 +65,11 @@ class PreviewIn(BaseModel):
     kind: Literal["firing", "resolved", "escalated", "reminder"] = "firing"
 
 
+class AckIn(BaseModel):
+    hours: float | None = Field(None, gt=0, le=24 * 30)   # None = until the incident resolves
+    note: str = Field("", max_length=300)
+
+
 class SilenceIn(BaseModel):
     server: str | None = None
     source_id: str | None = None
@@ -471,6 +476,21 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
         if status in ("firing", "resolved"):
             rows = [i for i in rows if i["status"] == status]
         return rows
+
+    @secured.post("/incidents/{incident_id}/ack")
+    async def ack_incident(incident_id: int, body: AckIn, user: str = Depends(require)) -> dict[str, Any]:
+        """"I'm on it": pause this incident's reminders and tell the channels once."""
+        inc = await engine.acknowledge(incident_id, user, body.note.strip(), body.hours)
+        if inc is None:
+            raise HTTPException(409, "only a firing incident can be acknowledged")
+        return inc
+
+    @secured.delete("/incidents/{incident_id}/ack")
+    async def unack_incident(incident_id: int) -> dict[str, Any]:
+        inc = engine.unacknowledge(incident_id)
+        if inc is None:
+            raise HTTPException(409, "only a firing incident can be un-acknowledged")
+        return inc
 
     @secured.get("/silences")
     async def silences() -> list[dict[str, Any]]:

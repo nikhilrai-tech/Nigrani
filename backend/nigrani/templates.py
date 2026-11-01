@@ -6,7 +6,7 @@ from typing import Any
 
 PLACEHOLDERS: dict[str, str] = {
     "emoji": "severity emoji (🔴 🟠 ✅)",
-    "status": "FIRING, RESOLVED, ESCALATED, REMINDER or TEST",
+    "status": "FIRING, RESOLVED, ESCALATED, REMINDER, ACKNOWLEDGED or TEST",
     "severity": "critical, warning or resolved",
     "rule": "alert rule name",
     "series": "what it fired for, e.g. a container or mount point",
@@ -18,7 +18,9 @@ PLACEHOLDERS: dict[str, str] = {
     "summary": "the rule's \"what to do\" text",
     "link": "link back to Nigrani (needs app.public_url)",
     "started_at": "when it started (UTC)",
-    "kind": "firing, resolved, escalated, reminder or test",
+    "kind": "firing, resolved, escalated, reminder, acknowledged or test",
+    "acknowledged_by": "who acknowledged it (acknowledged and resolved messages)",
+    "note": "the note left when acknowledging",
     "title": "the default title",
     "body": "the default body",
 }
@@ -52,6 +54,7 @@ def render(template: str, ev: dict[str, Any]) -> str:
         "environment": ev.get("environment", ""), "duration": ev.get("duration", ""),
         "summary": ev.get("summary", ""), "link": ev.get("link", ""), "started_at": ev.get("started_text", ""),
         "kind": ev.get("kind", ""), "title": ev.get("title", ""), "body": ev.get("body", ""),
+        "acknowledged_by": ev.get("acknowledged_by", ""), "note": ev.get("note", ""),
     }
     return _PLACEHOLDER.sub(lambda m: str(values.get(m.group(1), m.group(0))), template)
 
