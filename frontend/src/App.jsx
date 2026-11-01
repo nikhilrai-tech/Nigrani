@@ -9,6 +9,7 @@ import Containers from './pages/Containers';
 import Deploys from './pages/Deploys';
 import Fleet from './pages/Fleet';
 import Host from './pages/Host';
+import Incident from './pages/Incident';
 import Integrations from './pages/Integrations';
 import Login from './pages/Login';
 import Logs from './pages/Logs';
@@ -87,9 +88,9 @@ function Layout({ me, onLogout, toggleTheme, setRange }) {
     return { items, extra, tail };
   }, [pages.data, firing.data, cur, multi]);
 
-  const current = section === 'p' ? `p/${sub}` : section;
+  const current = section === 'p' ? `p/${sub}` : section === 'incident' ? 'alerts' : section;
   const all = [...nav.items, ...nav.extra, ...nav.tail];
-  const title = all.find((n) => n.key === current)?.label || 'Overview';
+  const title = section === 'incident' ? 'Incident' : (all.find((n) => n.key === current)?.label || 'Overview');
   useEffect(() => { document.title = `${title} · ${me.app}`; }, [title, me.app]);
 
   let view;
@@ -100,6 +101,7 @@ function Layout({ me, onLogout, toggleTheme, setRange }) {
     case 'p': view = <PanelPage key={sub} id={sub} />; break;
     case 'logs': view = <Logs />; break;
     case 'alerts': view = <Alerts tab={sub || 'active'} />; break;
+    case 'incident': view = <Incident key={sub} id={sub} />; break;
     case 'uptime': view = <Uptime />; break;
     case 'deploys': view = <Deploys />; break;
     case 'integrations': view = <Integrations />; break;

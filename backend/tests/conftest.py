@@ -18,7 +18,7 @@ class FakeProm:
         self.last_error = None
         self.metrics: set[str] = set()
 
-    async def instant(self, q):
+    async def instant(self, q, at=None):
         from nigrani.prom import PromUnavailable
         if not self.up:
             raise PromUnavailable("down")

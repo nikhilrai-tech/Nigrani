@@ -54,7 +54,10 @@ async def collect_containers(prom: Prom, cfg: Config, store: Store, services: li
         "cpu": f"sum by ({label}) (rate(container_cpu_usage_seconds_total{{{sel}}}[2m]) and on (id) {fresh}) * 100",
         "mem": f"max by ({label}) (container_memory_working_set_bytes{{{sel}}} and on (id) {fresh})",
         "limit": f"max by ({label}) (container_spec_memory_limit_bytes{{{sel}}} and on (id) {fresh})",
-        "restarts": f"max by ({label}) (changes(container_start_time_seconds{{{sel}}}[1h]))",
+        # cAdvisor labels every docker container with its RestartCount, so each restart or re-creation is a new series:
+        # the distinct incarnations seen in the last hour, minus the first one, are the restarts.
+        "restarts": f"count by ({label}) (count by ({label}, id, container_label_restartcount) "
+                    f"(last_over_time(container_start_time_seconds{{{sel}}}[1h]))) - 1",
         "uptime": f"min by ({label}) ((time() - container_start_time_seconds{{{sel}}}) and on (id) {fresh})",
         "rx": f"sum by ({label}) (rate(container_network_receive_bytes_total{{{sel}}}[2m]) and on (id) {fresh})",
         "tx": f"sum by ({label}) (rate(container_network_transmit_bytes_total{{{sel}}}[2m]) and on (id) {fresh})",

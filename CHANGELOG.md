@@ -5,7 +5,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Crash loops were not detected.** The *Container restarting* rule and the Containers page's "restarts" column counted
+  changes of cAdvisor's start time, which Docker's in-place restarts never change. They now count the RestartCount
+  incarnations cAdvisor reports, so a container stuck restarting is reported.
+- Fixes to a preset rule now reach existing installs. Rules you have not edited are updated on startup; edited ones are
+  left alone.
+
 ### Added
+- Incident page (`GET /api/incidents/{id}`, `#/incident/<id>`): lifecycle timeline, the rule's metric with thresholds,
+  the container's CPU/memory and logs around the incident, deploys, restarts and related alerts, plus a "What changed?"
+  summary. Every notification, escalation, acknowledgement, silence and resolution is now recorded per incident.
+- `/api/logs` accepts an explicit `start` / `end` window.
 - Acknowledge an alert (`POST /api/incidents/{id}/ack`): pauses its reminders for a chosen time or until it resolves, tells
   the channels who is on it, ends when the alert gets worse, and is credited in the resolved message. New
   `{acknowledged_by}` and `{note}` template placeholders.

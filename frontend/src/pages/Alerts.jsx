@@ -103,7 +103,7 @@ export function RuleModal({ rule, initial, onClose, onSaved }) {
 
 const ACK_CHOICES = [['1 hour', 1], ['4 hours', 4], ['24 hours', 24], ['Until it resolves', null]];
 
-function AckModal({ incident, onClose, onDone }) {
+export function AckModal({ incident, onClose, onDone }) {
   const [note, setNote] = useState('');
   const [hours, setHours] = useState(4);
   const [err, setErr] = useState(null);
@@ -155,7 +155,7 @@ function Active({ server }) {
         <tbody>{data.map((i) => (
           <tr key={i.id}>
             <td><SevBadge sev={i.severity} /></td>
-            <td><b>{i.rule_name}</b>{i.series && <span className="muted"> · {i.series}</span>} <ServerTag id={i.server} /><div className="muted" style={{ fontSize: 12.5 }}>{i.summary}</div></td>
+            <td><a href={`#/incident/${i.id}`}><b>{i.rule_name}</b></a>{i.series && <span className="muted"> · {i.series}</span>} <ServerTag id={i.server} /><div className="muted" style={{ fontSize: 12.5 }}>{i.summary}</div></td>
             <td>{fmtValue(i.last_value, i.unit)}{i.threshold != null && <div className="muted" style={{ fontSize: 12 }}>threshold {fmtValue(i.threshold, i.unit)}</div>}</td>
             <td>{fmtAgo(i.started_at)}{i.silenced && <div><Badge>silenced</Badge></div>}<div><AckBadge i={i} /></div>{i.ack_note && <div className="muted" style={{ fontSize: 12 }}>“{i.ack_note}”</div>}</td>
             <td style={{ whiteSpace: 'nowrap' }}>
@@ -238,7 +238,7 @@ function HistoryTable({ data }) {
         <tr key={i.id}>
           <td>{i.status === 'firing' ? <Badge kind="crit" icon="alert">Firing</Badge> : <Badge kind="ok" icon="check">Resolved</Badge>}</td>
           <td><SevBadge sev={i.severity} /></td>
-          <td><b>{i.rule_name}</b>{i.series && <span className="muted"> · {i.series}</span>} <ServerTag id={i.server} /></td>
+          <td><a href={`#/incident/${i.id}`}><b>{i.rule_name}</b></a>{i.series && <span className="muted"> · {i.series}</span>} <ServerTag id={i.server} /></td>
           <td>{fmtDateTime(i.started_at)}</td>
           <td>{fmtDuration((i.resolved_at || Date.now() / 1000) - i.started_at)}</td>
           <td>{fmtValue(i.peak_value, i.unit)}</td>

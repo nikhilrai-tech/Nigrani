@@ -28,6 +28,7 @@ from .format import build_event
 from .github import GithubDeploys
 from .notifiers import CHANNEL_FIELDS, Notifier, mask_settings
 from .prom import Prom, PromError, PromUnavailable, series_key, series_label
+from .legacy_presets import SHIPPED_IN_0_1_0
 from .schemas import ChannelIn, RuleIn, rule_problem
 from .store import Store
 from . import templates as msg_templates
@@ -141,7 +142,8 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
                 engine.drop_rule(r["id"])
                 store.delete_rule(r["id"])
         for r in cfg.rules:
-            store.seed_rule(r.model_dump())
+            if store.sync_preset_rule(r.model_dump(), SHIPPED_IN_0_1_0) == "updated":
+                log.info("preset rule %s was updated to the version shipped with this release", r.id)
         for rid in cfg.disable.get("rules", []):
             r = store.get_rule(rid)
             if r and r["enabled"]:
@@ -477,6 +479,83 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
             rows = [i for i in rows if i["status"] == status]
         return rows
 
+    @secured.get("/incidents/{incident_id}")
+    async def incident_detail(incident_id: int) -> dict[str, Any]:
+        """Everything around one alert: lifecycle, the metric behind it, deploys, restarts, related alerts."""
+        inc = store.get_incident(incident_id)
+        if not inc:
+            raise HTTPException(404, "unknown incident")
+        rt = runtimes.get(inc["server"]) or next(iter(runtimes.values()))
+        now = time.time()
+        end = min(now, (inc["resolved_at"] or now) + 600)
+        start = min(inc["started_at"] - 1200, end - 1800)
+        step = max(15, int((end - start) / 160))
+        problems: list[str] = []
+        out: dict[str, Any] = {
+            "incident": inc, "events": store.list_events(incident_id), "window": {"start": start, "end": end},
+            "chart": None, "container": None, "restarts": [], "deploys": [], "related": [], "problems": problems,
+        }
+
+        rule = store.get_rule(inc["source_id"])
+        if rule:
+            client = rt.prom if rule["datasource"] == "prometheus" else lokis.get(inc["server"])
+            if client is not None:
+                try:
+                    res = await client.range(rule["expr"], start, end, step)
+                    pick = [r for r in res if series_key(r["labels"]) == inc["series_key"]] or res[:3]
+                    out["chart"] = {
+                        "name": rule["name"], "unit": rule["unit"], "direction": rule["direction"],
+                        "warn": rule["warn"], "crit": rule["crit"],
+                        "series": [{"name": series_label(r["labels"]) or rule["name"], "points": r["points"]} for r in pick]}
+                except PromError as e:
+                    problems.append(f"metric: {e}")
+
+        label = cfg.containers.label
+        cname = inc["labels"].get(label) or inc["labels"].get(rt.view.datasources.loki_container_label)
+        if cname and re.fullmatch(r"[A-Za-z0-9_.\-/]+", cname):
+            sel = f'{label}="{cname}"'
+            fresh = _fresh(sel, cfg.containers.stale_seconds)
+            try:
+                cpu, mem = await asyncio.gather(
+                    rt.prom.range(f"sum(rate(container_cpu_usage_seconds_total{{{sel}}}[2m]) and on (id) {fresh}) * 100", start, end, step),
+                    rt.prom.range(f"max(container_memory_working_set_bytes{{{sel}}} and on (id) {fresh})", start, end, step))
+                if cpu or mem:
+                    out["container"] = {"name": cname, "cpu": cpu[0]["points"] if cpu else [],
+                                        "mem": mem[0]["points"] if mem else []}
+            except PromError as e:
+                problems.append(f"container metrics: {e}")
+
+        try:   # containers that (re)started shortly before or during the incident
+            started = await rt.prom.instant(
+                f'max by ({label}) (container_start_time_seconds{{{label}!=""}}) > {int(start - 3600)}', at=end)
+            # other containers only if they started close to the incident, so a pile of long-running containers
+            # does not drown the one that matters
+            restarts = [{"container": r["labels"].get(label, ""), "ts": r["value"]} for r in started
+                        if r["value"] and r["labels"].get(label) != cname and r["value"] >= inc["started_at"] - 600]
+            if cname and re.fullmatch(r"[A-Za-z0-9_.\-/]+", cname):
+                # The incident's own container: docker restarts it in place, which cAdvisor reports as a new series per
+                # RestartCount. The first sample of each series is when that restart happened.
+                runs = await rt.prom.range(f'container_start_time_seconds{{{label}="{cname}"}}', start, end, step)
+                runs = sorted((r for r in runs if r["points"]), key=lambda r: r["points"][0][0])
+                for n, r in enumerate(runs):
+                    if n == 0 and r["points"][0][0] <= start + 2 * step:
+                        continue                             # already running when the window began
+                    restarts.append({"container": cname, "ts": r["points"][0][0],
+                                     "count": r["labels"].get("container_label_restartcount")})
+            out["restarts"] = sorted(restarts, key=lambda x: x["ts"])[-30:]
+        except PromError as e:
+            problems.append(f"restarts: {e}")
+
+        if rt.github.enabled:
+            out["deploys"] = [r for r in await rt.github.runs()
+                              if r.get("finished_at") and start - 3600 <= r["finished_at"] <= end]
+
+        out["related"] = [
+            {k: i[k] for k in ("id", "rule_name", "series", "severity", "status", "started_at", "resolved_at", "server")}
+            for i in store.recent_incidents(200, inc["started_at"] - 900)
+            if i["id"] != incident_id and i["started_at"] <= inc["started_at"] + 900][:10]
+        return out
+
     @secured.post("/incidents/{incident_id}/ack")
     async def ack_incident(incident_id: int, body: AckIn, user: str = Depends(require)) -> dict[str, Any]:
         """"I'm on it": pause this incident's reminders and tell the channels once."""
@@ -582,7 +661,8 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
     # ---------------- logs / deploys / checks ----------------
     @secured.get("/logs")
     async def logs(container: str = "", q: str = "", level: str = "", limit: int = Query(200, le=1000),
-                   since: str = "1h", rt: Runtime = Depends(srv)) -> dict[str, Any]:
+                   since: str = "1h", start: float | None = None, end: float | None = None,
+                   rt: Runtime = Depends(srv)) -> dict[str, Any]:
         ds = rt.view.datasources
         if not ds.loki:
             raise HTTPException(404, "Loki is not configured (datasources.loki)")
@@ -603,12 +683,13 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
         if q:
             query += " |= " + _logql_str(q)
         secs = RANGES.get(since, 3600)
-        end = time.time()
+        end_ts = end if (start is not None and end) else time.time()
+        start_ts = start if start is not None else end_ts - secs
         try:
             async with httpx.AsyncClient(timeout=15) as cl:
                 r = await cl.get(ds.loki.rstrip("/") + "/loki/api/v1/query_range", params={
                     "query": query, "limit": limit, "direction": "backward",
-                    "start": int((end - secs) * 1e9), "end": int(end * 1e9)})
+                    "start": int(start_ts * 1e9), "end": int(end_ts * 1e9)})
             r.raise_for_status()
             streams = r.json()["data"]["result"]
         except (httpx.HTTPError, KeyError, ValueError) as e:
