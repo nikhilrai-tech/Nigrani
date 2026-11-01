@@ -1,12 +1,22 @@
 # Nigrani
 
+**Self-hosted monitoring and alerting dashboard for Docker projects.** One container that sits on top of Prometheus and
+Loki, adds Sentry, Kubernetes, AWS CloudWatch, Datadog and Azure Monitor as alert sources, and tells you on Slack, Microsoft
+Teams, Telegram, email, WhatsApp, Discord or a webhook when something breaks.
+
+[![CI](https://github.com/nikhilrai-tech/Nigrani/actions/workflows/ci.yml/badge.svg)](https://github.com/nikhilrai-tech/Nigrani/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/nikhilrai-tech/Nigrani?sort=semver)](https://github.com/nikhilrai-tech/Nigrani/releases)
+[![Docker image](https://img.shields.io/badge/ghcr.io-nigrani-2496ed?logo=docker&logoColor=white)](https://github.com/nikhilrai-tech/Nigrani/pkgs/container/nigrani)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 *Nigrani* (निगरानी) is Hindi for "watchful oversight".
 
-A self-hosted monitoring and alerting dashboard you can drop into any Docker project.
-
-Nigrani sits **on top of** Prometheus (and optionally Loki). It doesn't replace them. It gives you one place to see
-what's healthy, what the thresholds are, what is about to break, and it sends you a message on Slack, Microsoft
-Teams, Telegram, email, WhatsApp, Discord or any webhook when something does.
+```bash
+docker run -d --name nigrani -p 8080:8080 \
+  -e NIGRANI_PASSWORD=change-me -e NIGRANI_PROMETHEUS_URL=http://your-prometheus:9090 \
+  -v nigrani-data:/data ghcr.io/nikhilrai-tech/nigrani:latest
+# open http://localhost:8080   (no Prometheus yet? see "Try it in two minutes" below)
+```
 
 ![Overview](docs/screenshots/overview-dark.png)
 
@@ -21,6 +31,14 @@ silently stops. Nigrani answers the operational questions directly:
   quiet hours, and automatic retry if a channel is down.
 - **Why?** Per-container CPU/memory/network, live logs (Loki), and deploy markers on the charts so you can see
   that the spike started right after a release.
+
+### Is it for you?
+
+- **Good fit:** you run Docker (Compose or a few servers) with Prometheus, you want alerts and an answer to "is it OK?"
+  without building Grafana dashboards and alert rules by hand, and you want errors from Sentry, cloud metrics from
+  AWS, Azure or Datadog, and your cluster in the same place.
+- **It works alongside** Prometheus, Loki and Grafana rather than replacing them: it reads from them, and links back
+  into your Grafana dashboards.
 
 ## Features
 
@@ -97,13 +115,12 @@ Give it about a minute for Prometheus to collect its first samples.
 
 ### C. Plain `docker run`
 
-Once a release is published you can use `ghcr.io/nikhilrai-tech/nigrani:latest` instead of building.
+The image is public and built for amd64 and arm64.
 
 ```bash
-docker build -t nigrani .
 docker run -d --name nigrani -p 8080:8080 \
   -e NIGRANI_PASSWORD=... -e NIGRANI_PROMETHEUS_URL=http://your-prometheus:9090 \
-  -v nigrani-data:/data nigrani
+  -v nigrani-data:/data ghcr.io/nikhilrai-tech/nigrani:latest
 ```
 
 Without a config file Nigrani runs with the `core` preset and these environment variables:
@@ -549,6 +566,13 @@ Presets are PromQL against third-party metric names, so they are tested against 
 
 To add a preset, drop a YAML file with `tiles`, `pages` and `rules` into `backend/nigrani/presets/` (see
 `redis.yaml` for the shape); it is picked up by name.
+
+## Community
+
+Questions and ideas go in [Discussions](https://github.com/nikhilrai-tech/Nigrani/discussions); bugs and feature requests
+in [Issues](https://github.com/nikhilrai-tech/Nigrani/issues). Pull requests are welcome, start with
+[CONTRIBUTING.md](CONTRIBUTING.md) (a new data source such as GCP Cloud Monitoring or New Relic follows the shape of
+`backend/nigrani/datadog.py`). If Nigrani saves you time, a star helps other people find it.
 
 ## License
 
