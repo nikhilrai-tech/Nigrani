@@ -80,6 +80,14 @@ digest:
   weekday: null                  # 0=Mon ... 6=Sun; null = daily (24h), a number = weekly (7d)
   channels: []                   # empty = all channels
 
+# Links into your Grafana (Explore with the same query, and your own dashboards). Optional.
+# grafana:
+#   url: https://grafana.example.com
+#   prometheus_datasource: <datasource UID>
+#   loki_datasource: <datasource UID>
+#   dashboards:
+#     - { title: Containers, url: "/d/abc123/containers?var-container={container}&from={from}&to={to}", where: [incident, container] }
+
 alerts:
   eval_interval: 30              # seconds between rule evaluations
   repeat_interval: 14400         # re-notify an unresolved alert every 4h

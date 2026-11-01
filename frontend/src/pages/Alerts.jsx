@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, useApi } from '../api';
+import { ExploreButton } from '../components/Grafana';
 import { useApp } from '../ctx';
 import { Badge, Card, Empty, ErrorNote, Modal, Seg, SevBadge, Toggle } from '../components/ui';
 import { fmtAgo, fmtDateTime, fmtDuration, fmtValue } from '../format';
@@ -47,6 +48,7 @@ export function RuleModal({ rule, initial, onClose, onSaved }) {
   return (
     <Modal title={rule ? 'Edit alert rule' : 'New alert rule'} onClose={onClose} actions={<>
       <button className="btn" onClick={onClose}>Cancel</button>
+      <ExploreButton expr={f.expr} datasource={f.datasource} />
       <button className="btn" onClick={test} disabled={busy || !f.expr}>Preview</button>
       <button className="btn primary" onClick={save} disabled={busy || !f.name || !f.expr}>Save</button>
     </>}>

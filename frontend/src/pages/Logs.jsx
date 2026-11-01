@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, useApi } from '../api';
 import { Card, ErrorNote, Seg } from '../components/ui';
+import { ExploreButton } from '../components/Grafana';
 import { buildLogRule } from '../logrule';
 import { RuleModal } from './Alerts';
 import { useApp } from '../ctx';
@@ -47,7 +48,8 @@ export default function Logs({ embedded = false, container: fixed = '' }) {
           </select>
           <Seg value={level} options={['all', 'warn', 'error']} onChange={setLevel} />
           <input type="text" placeholder="Search text…" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 280 }} aria-label="Search logs" />
-          <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={() => setCreating(true)} disabled={!state.query} title="Alert when this search matches too many lines">Create alert from this search</button>
+          <span style={{ marginLeft: 'auto' }}><ExploreButton expr={state.query} datasource="loki" label="Open in Grafana" /></span>
+          <button className="btn sm" onClick={() => setCreating(true)} disabled={!state.query} title="Alert when this search matches too many lines">Create alert from this search</button>
           <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} /> Live (5s)</label>
         </div>
       )}

@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Grafana links (`grafana:` config): "Open in Grafana" opens Explore with an alert's query and time range, and your own
+  dashboards are linked from the incident, container, host and overview screens, with `{container}`, `{from}`, `{to}`
+  and other placeholders.
+
 ### Fixed
 - **Crash loops were not detected.** The *Container restarting* rule and the Containers page's "restarts" column counted
   changes of cAdvisor's start time, which Docker's in-place restarts never change. They now count the RestartCount
