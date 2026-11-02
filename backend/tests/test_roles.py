@@ -1,11 +1,10 @@
 import sqlite3
 
-import pytest
 from fastapi.testclient import TestClient
 
 from conftest import FakeProm
 from nigrani.api import create_app
-from nigrani.auth import Auth, Identity, required_role
+from nigrani.auth import Identity, required_role
 from nigrani.config import load_config
 from nigrani.passwords import hash_password, verify_password
 

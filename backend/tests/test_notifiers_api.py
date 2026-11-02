@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 import httpx
 from fastapi.testclient import TestClient
 
-from conftest import FakeProm
 from nigrani.api import create_app
 from nigrani.auth import Auth
 from nigrani.format import build_event, fmt_bytes, fmt_duration, fmt_value

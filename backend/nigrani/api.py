@@ -15,7 +15,7 @@ import httpx
 from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from . import __version__
 from .auth import COOKIE, Auth, Identity, make_authorizer

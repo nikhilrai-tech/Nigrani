@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from conftest import FakeProm, RecordingNotifier
 from nigrani.api import create_app
-from nigrani.config import ConfigError, SentryCfg, load_config
+from nigrani.config import SentryCfg, load_config
 from nigrani.engine import Engine
 from nigrani.prom import PromQueryError
 from nigrani.sentry import Sentry, SentryError, normalize

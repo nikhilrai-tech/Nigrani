@@ -8,6 +8,13 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/ruff-action@v3
+        with: { src: backend }
+
   backend:
     runs-on: ubuntu-latest
     steps:
