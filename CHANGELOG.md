@@ -5,6 +5,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `ratio` unit for fractional metrics, displayed as percentages in dashboards, alerts and notifications; thresholds remain in query units.
+
 ## [0.3.0] - 2026-11-02
 
 ### Added

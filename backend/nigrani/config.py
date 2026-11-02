@@ -111,7 +111,7 @@ class TileCfg(_M):
     id: str
     title: str
     query: str
-    unit: str = "short"
+    unit: str = "short"  # ratio displays fractions as percentages; thresholds stay in query units
     direction: Direction = "above"
     warn: float | None = None
     crit: float | None = None
@@ -126,7 +126,7 @@ class QueryCfg(_M):
 class PanelCfg(_M):
     title: str
     queries: list[QueryCfg]
-    unit: str = "short"
+    unit: str = "short"  # ratio displays fractions as percentages; thresholds stay in query units
     kind: Literal["line", "area", "stat"] = "line"
     wide: bool = False
     description: str = ""
@@ -158,7 +158,7 @@ class RuleCfg(_M):
     warn: float | None = None
     crit: float | None = None
     for_seconds: int = 300
-    unit: str = "short"
+    unit: str = "short"  # ratio displays fractions as percentages; thresholds stay in query units
     summary: str = ""
     enabled: bool = True
     servers: list[str] = Field(default_factory=list)  # empty = evaluate on every server

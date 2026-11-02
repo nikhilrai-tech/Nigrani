@@ -29,7 +29,7 @@ async def _server_lines(cfg: Config, store: Store, view: ServerView, prom: Prom,
                      f"({fmt_duration((worst['resolved_at'] or now) - worst['started_at'])})")
     peaks = []
     for t in cfg.tiles:
-        if t.unit != "percent":
+        if t.unit not in ("percent", "ratio"):
             continue
         try:
             r = await prom.instant(f"max_over_time(({t.query})[{hours}h:1m])")

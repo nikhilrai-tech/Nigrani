@@ -158,7 +158,7 @@ rules:
     warn: 100
     crit: 500
     for_seconds: 300
-    unit: short
+    unit: short                  # ratio displays 0.75 as 75.0%; use fractional warn/crit values
     summary: Workers can't keep up.
 
 # Your own dashboard pages (appear in the sidebar). `requires` hides the page until the metric exists.
@@ -170,7 +170,7 @@ pages:
     hint: Expose a devices_online gauge from your app.
     panels:
       - title: Devices online
-        unit: short
+        unit: short                  # ratio displays 0.75 as 75.0%; use fractional warn/crit values
         kind: area
         expr: sum(devices_online)
         legend: online

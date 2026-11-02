@@ -223,6 +223,10 @@ rules:
     direction: above      # or "below"
 ```
 
+Use `unit: ratio` for queries returning fractions: `0.75` displays as `75.0%` in the UI and notifications.
+Keep thresholds in query units (`warn: 0.8` displays as `80.0%`); no query scaling is needed.
+Use `unit: percent` when the query already returns values on a 0–100 scale.
+
 **Log-based rules.** A rule can read from Loki instead of Prometheus (`datasource: loki`). The expression is a LogQL
 *metric* query, so it returns numbers and goes through the same thresholds, de-duplication, silences and channels:
 

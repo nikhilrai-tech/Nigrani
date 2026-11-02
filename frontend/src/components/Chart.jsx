@@ -45,7 +45,7 @@ export default function Chart({ series, unit = 'short', kind = 'line', height = 
       legend: { show: false },
       scales: {
         x: { time: true },
-        y: { range: (_u, min, max) => { const top = Math.max(max, ...thresholds.map((t) => t.value)); return [Math.min(0, min), unit === 'percent' ? Math.max(100, top) : (top > 0 ? top * 1.15 : 1)]; } },
+        y: { range: (_u, min, max) => { const top = Math.max(max, ...thresholds.map((t) => t.value)); return [Math.min(0, min), unit === 'percent' ? Math.max(100, top) : unit === 'ratio' ? Math.max(1, top) : (top > 0 ? top * 1.15 : 1)]; } },
       },
       axes: [
         axis({ values: (_u, v) => v.map((t) => fmtClock(t)) }),
