@@ -20,6 +20,7 @@ export function fmtValue(v, unit = 'short') {
   if (v == null || Number.isNaN(v)) return '—';
   switch (unit) {
     case 'percent': return `${v.toFixed(1)}%`;
+    case 'ratio': return `${(v * 100).toFixed(1)}%`;
     case 'bytes': return fmtBytes(v);
     case 'bps': return `${fmtBytes(v)}/s`;
     case 'seconds': return Math.abs(v) < 1 ? `${(v * 1000).toFixed(0)} ms` : `${v.toFixed(2)} s`;

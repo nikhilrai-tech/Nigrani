@@ -33,6 +33,8 @@ def fmt_value(v: float | None, unit: str = "short") -> str:
         return "—"
     if unit == "percent":
         return f"{v:.1f}%"
+    if unit == "ratio":
+        return f"{v * 100:.1f}%"
     if unit == "bytes":
         return fmt_bytes(v)
     if unit == "bps":
