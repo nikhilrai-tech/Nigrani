@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from conftest import FakeProm
 from nigrani.api import create_app
 from nigrani.cloudwatch import CloudWatch, CloudWatchError, parse
-from nigrani.config import CloudWatchCfg, ConfigError, load_config
+from nigrani.config import CloudWatchCfg, load_config
 from nigrani.prom import PromQueryError, series_key
 from nigrani.sigv4 import Credentials, sign
 

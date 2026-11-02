@@ -1,0 +1,37 @@
+name: Auto-merge
+# Turns on GitHub auto-merge; the PR still merges only after every required check is green.
+# pull_request_target runs the base branch's workflow and never checks out PR code.
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  dependabot:
+    # Dependabot patch/minor bumps merge on their own; majors wait for a human.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@v2
+      - if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  labeled:
+    # A maintainer reviews, then adds the `automerge` label; the PR merges once checks pass.
+    if: >-
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'automerge' &&
+      github.event.sender.login == github.repository_owner
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

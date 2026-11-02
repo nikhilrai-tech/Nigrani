@@ -15,7 +15,6 @@ from typing import Any, Literal
 from pydantic import ValidationError
 
 from . import templates as msg_templates
-from .config import Config
 from .notifiers import CHANNEL_FIELDS
 from .schemas import ChannelIn, RuleIn, rule_problem
 from .store import Store
