@@ -8,7 +8,7 @@ from typing import Any
 
 from .config import Config, ServiceCfg
 from .engine import Signal
-from .prom import Prom, PromError
+from .prom import Prom
 from .store import Store
 
 NAME_RE = re.compile(r"^[A-Za-z0-9_.\-/]+$")

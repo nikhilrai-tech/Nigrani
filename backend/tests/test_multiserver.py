@@ -3,7 +3,6 @@ import os
 import sqlite3
 import tempfile
 import time
-from pathlib import Path
 
 import httpx
 import pytest

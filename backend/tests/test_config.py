@@ -77,7 +77,6 @@ def test_env_expansion_but_channels_stay_literal(tmp_path, monkeypatch):
 
 
 def test_panel_shorthand():
-    cfg = load_config(None, explicit=False)
     from nigrani.config import PanelCfg
     p = PanelCfg(title="t", expr="up", legend="x")
     assert p.queries[0].expr == "up"

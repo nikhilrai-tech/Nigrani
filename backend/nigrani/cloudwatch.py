@@ -8,7 +8,6 @@ It plugs into the same interface as Prometheus for alert rules. An `expr` names 
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import math
 import os

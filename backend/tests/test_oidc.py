@@ -1,4 +1,3 @@
-import base64
 import hashlib
 import json
 import time
@@ -125,7 +124,6 @@ def test_roles_from_the_configured_lists_and_database_roles_win_afterwards(tmp_p
     app, provider = make(tmp_path)
     assert sign_in(app, provider, email="boss@example.com")[0].get("/api/me").json()["role"] == "admin"
     assert sign_in(app, provider, email="lead@example.com")[0].get("/api/me").json()["role"] == "editor"
-    user = app.state.store.get_user_by_name("dev@example.com") or None
     sign_in(app, provider)                                                         # dev, first time: viewer
     dev = app.state.store.get_user_by_name("dev@example.com")
     app.state.store.update_user(dev["id"], role="editor")                           # an admin promoted them
