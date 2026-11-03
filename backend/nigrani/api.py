@@ -1118,8 +1118,8 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
         if argo is not None:
             try:
                 runs += await argo.deploys()
-            except PromError as e:
-                error = error or str(e)
+            except PromError:
+                error = error or argo.last_error or "Argo CD could not be read"
         runs.sort(key=lambda r: -(r.get("finished_at") or r.get("started_at") or 0))
         return {"enabled": rt.github.enabled or argo is not None, "error": error, "runs": runs}
 
