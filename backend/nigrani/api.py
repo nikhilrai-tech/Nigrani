@@ -846,7 +846,8 @@ def create_app(cfg: Config, prom: "Prom | dict[str, Prom] | None" = None,
                     rows.append({"series": series_label(s_["labels"]), "value": s_["value"], "severity": sev})
             preview.update(count=len(res), series=rows)
         except PromError as e:
-            preview["error"] = str(e)
+            # a fixed message: the details are one click away (Preview in the editor) and need not travel in this response
+            preview["error"] = "Prometheus is not reachable" if isinstance(e, PromUnavailable) else "Prometheus rejected this query"
         return {"rule": rule.model_dump(exclude={"id", "datasource", "servers", "enabled"}), "problem": problem, "preview": preview}
 
     # ---------------- users and audit log (admin) ----------------

@@ -207,3 +207,17 @@ def test_viewers_cannot_spend_the_api_budget(tmp_path, fake):
         assert c.post(f"/api/incidents/{iid}/explain", headers=H).status_code == 403
         assert c.post("/api/ai/rule", json={"description": "cpu is high"}, headers=H).status_code == 403
         assert fake.requests == []
+
+
+def test_a_draft_whose_query_cannot_run_reports_it_without_details(tmp_path, fake):
+    fake.reply = {"stop_reason": "end_turn", "text": json.dumps(
+        {"name": "x", "expr": "up", "direction": "above", "warn": 1, "unit": "short"})}
+    prom = FakeProm()
+    prom.up = False
+    cfg = load_config(None)
+    cfg.data_dir, cfg.auth.password = str(tmp_path), "pw"
+    cfg.ai.enabled, cfg.ai.api_key, cfg.ai.base_url = True, "k", fake.url
+    with TestClient(create_app(cfg, prom=prom)) as c:
+        login(c)
+        out = c.post("/api/ai/rule", json={"description": "anything"}, headers=H).json()
+        assert out["preview"]["error"] == "Prometheus is not reachable" and out["rule"]["expr"] == "up"
