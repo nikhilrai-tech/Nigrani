@@ -482,6 +482,8 @@ grafana:
 
 ## Status page
 
+![Status page](docs/screenshots/status-page.png)
+
 A public page for your users, at `/#/status`, with no login. It shows each uptime check with **90 days of daily uptime**
 (one bar per day: green, amber for a few failed checks, red for an outage), the last 7 days of check incidents, and the
 updates you post. Internal alert names never appear on it.
@@ -499,6 +501,8 @@ while it runs), or a plain *notice*. Mark it resolved when it is over. The same 
 `/api/public/status`.
 
 ## AI assistant
+
+![AI explanation of an incident](docs/screenshots/ai-explain.png)
 
 Optional, off by default. With an [Anthropic API key](https://console.anthropic.com/) Nigrani can:
 
