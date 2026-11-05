@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Google Cloud Monitoring** as a data source: alert rules on metric types with label filters, one alert per time series, signed in with
+  a service account key or the machine's own identity (GCE/GKE). Read-only (Monitoring Viewer). New `gcp` preset (VM CPU, Cloud SQL CPU, disk, memory).
 - **New Relic** as a data source: alert rules written in NRQL through NerdGraph (User API key, read-only), one alert per facet,
   charted on the incident page. New `newrelic` preset for host CPU, memory and disk.
 

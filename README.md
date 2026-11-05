@@ -1,7 +1,7 @@
 # Nigrani
 
 **Self-hosted monitoring and alerting dashboard for Docker projects.** One container that sits on top of Prometheus and
-Loki, adds Sentry, Kubernetes, AWS CloudWatch, Datadog, New Relic and Azure Monitor as alert sources, and tells you on Slack, Microsoft
+Loki, adds Sentry, Kubernetes, AWS CloudWatch, Datadog, New Relic, Google Cloud Monitoring and Azure Monitor as alert sources, and tells you on Slack, Microsoft
 Teams, Telegram, email, WhatsApp, Discord or a webhook when something breaks.
 
 [![CI](https://github.com/nikhilrai-tech/Nigrani/actions/workflows/ci.yml/badge.svg)](https://github.com/nikhilrai-tech/Nigrani/actions/workflows/ci.yml)
@@ -70,6 +70,7 @@ silently stops. Nigrani answers the operational questions directly:
 | **Argo CD** | The state of your GitOps applications on their own page (health, sync, revision, errors), alert rules for applications that are out of sync, degraded, stuck progressing or failing to sync, and every sync as a deploy marker on the incident page. Read-only, with a token that can only `get` |
 | **Datadog** | Alert rules straight on Datadog metric queries (one alert per host or tag), the metric charted on the incident page, and a page of monitors that are alerting, warning or have no data |
 | **New Relic** | Alert rules written in NRQL through NerdGraph, one alert per facet, with the query charted on the incident page |
+| **Google Cloud Monitoring** | Alert rules straight on Cloud Monitoring metrics (Compute Engine, Cloud SQL, GKE...), one alert per time series, signed in with a service account or the machine's own identity |
 | **Azure Monitor** | Alert rules straight on Azure Monitor metrics (VMs, PostgreSQL, SQL, App Service...), one alert per resource, with the metric charted on the incident page |
 | **Grafana links** | "Open in Grafana" from an alert, a rule or the Logs page (Explore with the same query and time range), plus links to your own dashboards from the incident, container, host and overview screens |
 | **Service pages** | Traffic (Django), Redis, Postgres, AWS RDS, MQTT, Celery out of the box. Add your own pages in YAML |
@@ -556,6 +557,30 @@ presets: [core, newrelic]             # host CPU, memory and disk rules from the
   `TIMESERIES`).
 - If New Relic refuses the key or is unreachable the rule shows why and nothing is raised or resolved because of it.
 - With `servers:` each server can have its own `newrelic:` block (another account or region).
+
+## Google Cloud Monitoring
+
+Alert on Google Cloud metrics (Compute Engine, Cloud SQL, GKE, Cloud Run...) without an exporter. Nigrani signs in as a
+service account and reads time series. Read-only: the account only needs the **Monitoring Viewer** role.
+
+```yaml
+gcp:
+  project_id: my-project-123
+  credentials_file: /config/gcp-key.json     # a service account key; or credentials_json: ${GCP_SERVICE_ACCOUNT_JSON}
+presets: [core, gcp]                         # VM CPU, Cloud SQL CPU, disk and memory
+```
+
+- With no key configured Nigrani uses the machine's own account: `GOOGLE_APPLICATION_CREDENTIALS`, then the GCE / GKE
+  metadata server (so on GKE with Workload Identity, or on a VM with an attached service account, nothing needs
+  configuring beyond `project_id`).
+- A rule's data source is *gcp* and its expression is a metric type, optionally narrowed and tuned:
+  `cloudsql.googleapis.com/database/cpu/utilization resource.label.database_id=prod-*`. `resource.label.<name>=` and
+  `metric.label.<name>=` filter by label (`*` is a wildcard), `aligner=` is `mean` (the default), `max`, `min`, `sum`,
+  `rate`... and `period=` is the alignment window in seconds (default 300). Every time series is its own alert.
+- Use `aligner=rate` for counters (cumulative metrics), as Cloud Monitoring requires a rate or delta for them.
+- The metric is charted on the incident page like any other.
+- If Google refuses the account or is unreachable the rule shows why and nothing is raised or resolved because of it.
+- With `servers:` each server can have its own `gcp:` block (another project).
 
 ## Azure Monitor
 
