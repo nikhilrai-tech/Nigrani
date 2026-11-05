@@ -70,6 +70,10 @@ class DemoProm:
     def _err_pct(self, t: float) -> float:
         return max(0.0, 0.2 + 0.1 * _noise("err", t) + 6.5 * self.spell(t))
 
+    def _within(self, t: float) -> float:
+        """The share of requests answered inside the latency objective: nearly all, fewer in a bad spell."""
+        return min(1.0, 0.996 + 0.002 * _noise("fast", t) - 0.09 * self.spell(t))
+
     def _latency(self, q: float, t: float) -> float:
         base = {0.5: 0.04, 0.95: 0.12, 0.99: 0.3}.get(q, 0.12)
         return base * (1 + 0.15 * _noise(f"lat{q}", t)) + (3.6 * base / 0.12 * self.spell(t) if q >= 0.9 else 0.5 * base * self.spell(t))
@@ -99,6 +103,14 @@ class DemoProm:
             if "by (le, view)" in e:
                 return [({"view": v}, (lambda t, i=i: self._latency(q, t) * (0.6 + 0.3 * i))) for i, v in enumerate(VIEWS)]
             return [({}, lambda t: self._latency(q, t))]
+        if "django_http_requests_latency_seconds_by_view_method_count" in e and "/" not in e:
+            return [({}, self._rps)]                       # all requests
+        if "django_http_requests_latency_seconds_by_view_method_bucket" in e and 'le="' in e and "/" not in e:
+            return [({}, lambda t: self._rps(t) * self._within(t))]    # the ones answered fast enough
+        if "django_http_responses_total_by_status_total" in e and "by (status)" not in e and "/" not in e:
+            if 'status=~"5' in e:                          # 5xx responses per second (an SLO's `errors`)
+                return [({}, lambda t: self._rps(t) * self._err_pct(t) / 100)]
+            return [({}, self._rps)]                       # all responses per second (an SLO's `total`)
         if "django_http_responses_total_by_status_total" in e:
             if "by (status)" in e:
                 share = {"200": 0.8, "201": 0.08, "301": 0.05, "404": 0.05}
