@@ -154,3 +154,27 @@ def test_container_numbers_are_realistic_not_all_the_freshness_age():
     assert all(0.1 < r["value"] < 200 for r in cpu)
     assert all(r["value"] > 3600 for r in up)                        # up for hours or days
     assert all(r["value"] < 10 for r in age)                         # the age query is the one that is a few seconds
+
+
+def test_demo_slos_are_believable():
+    """The SLO queries are answered with a small error share and a high within-objective share, worse in a bad spell."""
+    import asyncio
+    from nigrani.demo import DemoProm
+    p = DemoProm(started=1000.0)
+    calm, bad = 1000.0 + 120 + 3000, 1000.0 + 120 + 30           # t0 + 120 s offset: the first spell starts 120 s in
+
+    def val(expr, t):
+        return asyncio.run(p.instant(expr, t))[0]["value"]
+    total = "sum(rate(django_http_responses_total_by_status_total[5m]))"
+    errors = 'sum(rate(django_http_responses_total_by_status_total{status=~"5.."}[5m]))'
+    count = "sum(rate(django_http_requests_latency_seconds_by_view_method_count[5m]))"
+    good = 'sum(rate(django_http_requests_latency_seconds_by_view_method_bucket{le="0.5"}[5m]))'
+    for t, lo, hi in ((calm, 0.0, 0.01), (bad, 0.02, 0.2)):
+        assert lo <= val(errors, t) / val(total, t) <= hi
+    assert val(good, calm) / val(count, calm) > 0.98 and val(good, bad) / val(count, bad) < 0.97
+    assert val(total, calm) == val(count, calm)
+
+
+def test_demo_config_has_slos():
+    from nigrani.config import load_config
+    assert [s.id for s in load_config(None, demo=True).slos] == ["web-availability", "fast-responses", "website-uptime"]

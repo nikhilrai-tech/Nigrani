@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- The live demo has an SLOs page (availability, latency and uptime objectives) with believable sample numbers, and the SLO screenshot is retaken in the Ember look.
 - **Google Cloud Monitoring** as a data source: alert rules on metric types with label filters, one alert per time series, signed in with
   a service account key or the machine's own identity (GCE/GKE). Read-only (Monitoring Viewer). New `gcp` preset (VM CPU, Cloud SQL CPU, disk, memory).
 - **New Relic** as a data source: alert rules written in NRQL through NerdGraph (User API key, read-only), one alert per facet (labelled by the FACET attribute name, an idea from #69 by @29rdx),
