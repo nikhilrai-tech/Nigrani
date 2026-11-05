@@ -162,7 +162,7 @@ class RuleCfg(_M):
     summary: str = ""
     enabled: bool = True
     servers: list[str] = Field(default_factory=list)  # empty = evaluate on every server
-    datasource: Literal["prometheus", "loki", "sentry", "cloudwatch", "kubernetes", "datadog", "azure", "argocd"] = "prometheus"  # loki: LogQL metric query; sentry: a Sentry search
+    datasource: Literal["prometheus", "loki", "sentry", "cloudwatch", "kubernetes", "datadog", "azure", "argocd", "newrelic"] = "prometheus"  # loki: LogQL metric query; sentry: a Sentry search
 
 
 ChannelType = Literal["slack", "teams", "discord", "telegram", "email", "webhook", "whatsapp"]
@@ -327,6 +327,33 @@ class AzureCfg(_M):
         return bool(self.tenant_id and self.client_id and self.client_secret and self.subscription_id)
 
 
+class NewRelicCfg(_M):
+    """New Relic: NRQL queries become alert rules (read-only, through NerdGraph with a User API key)."""
+    account_id: str = ""
+    api_key: str = ""  # a User key (NRAK-...)
+    region: Literal["us", "eu"] = "us"
+    url: str = ""  # only for a proxy or a test double
+
+    @field_validator("account_id")
+    @classmethod
+    def _account(cls, v: str) -> str:
+        v = str(v).strip()
+        if v and not v.isdigit():
+            raise ValueError("must be the numeric New Relic account id")
+        return v
+
+    @field_validator("url")
+    @classmethod
+    def _url(cls, v: str) -> str:
+        if v and not re.match(r"^https?://[^\s]+$", v):
+            raise ValueError("must start with http:// or https://")
+        return v.rstrip("/")
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.account_id and self.api_key)
+
+
 class DatadogCfg(_M):
     """Datadog: metric queries become alert rules and monitors that are not OK get their own page."""
     site: str = "datadoghq.com"  # datadoghq.eu, us3.datadoghq.com, us5.datadoghq.com, ap1.datadoghq.com, ddog-gov.com
@@ -472,6 +499,7 @@ class ServerCfg(_M):
     kubernetes: KubernetesCfg | None = None
     datadog: DatadogCfg | None = None
     azure: AzureCfg | None = None
+    newrelic: NewRelicCfg | None = None
     argocd: ArgoCDCfg | None = None
 
     @field_validator("id")
@@ -499,6 +527,7 @@ class ServerView:
     datadog: DatadogCfg
     azure: AzureCfg
     argocd: ArgoCDCfg
+    newrelic: NewRelicCfg
 
 
 class Config(_M):
@@ -522,6 +551,7 @@ class Config(_M):
     kubernetes: KubernetesCfg = KubernetesCfg()
     datadog: DatadogCfg = DatadogCfg()
     azure: AzureCfg = AzureCfg()
+    newrelic: NewRelicCfg = NewRelicCfg()
     argocd: ArgoCDCfg = ArgoCDCfg()
     digest: DigestCfg = DigestCfg()
     alerts: AlertsCfg = AlertsCfg()
@@ -545,7 +575,7 @@ class Config(_M):
         if not self.servers:
             env = self.app.environment
             return [ServerView("default", env or self.app.name, env, self.datasources, self.services, self.checks,
-                               self.github, self.grafana, self.sentry, self.cloudwatch, self.kubernetes, self.datadog, self.azure, self.argocd)]
+                               self.github, self.grafana, self.sentry, self.cloudwatch, self.kubernetes, self.datadog, self.azure, self.argocd, self.newrelic)]
         return [
             ServerView(
                 s.id, s.name or s.id, s.environment or s.name or s.id,
@@ -560,6 +590,7 @@ class Config(_M):
                 s.datadog or self.datadog,
                 s.azure or self.azure,
                 s.argocd or self.argocd,
+                s.newrelic or self.newrelic,
             )
             for s in self.servers
         ]

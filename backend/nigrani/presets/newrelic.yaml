@@ -1,0 +1,30 @@
+# Needs: the `newrelic:` block in the config (account id and a User API key) and New Relic's infrastructure agent on your hosts.
+# Rules in this preset are NRQL queries, one alert per host. Servers without New Relic skip them.
+rules:
+  - id: nr-host-cpu
+    name: New Relic host CPU high
+    datasource: newrelic
+    expr: "SELECT average(cpuPercent) FROM SystemSample FACET hostname SINCE 5 minutes ago"
+    warn: 80
+    crit: 95
+    for_seconds: 600
+    unit: percent
+    summary: A host's CPU has been saturated.
+  - id: nr-host-memory
+    name: New Relic host memory high
+    datasource: newrelic
+    expr: "SELECT average(memoryUsedPercent) FROM SystemSample FACET hostname SINCE 5 minutes ago"
+    warn: 85
+    crit: 95
+    for_seconds: 600
+    unit: percent
+    summary: A host is running out of memory.
+  - id: nr-host-disk
+    name: New Relic disk filling up
+    datasource: newrelic
+    expr: "SELECT max(diskUsedPercent) FROM StorageSample FACET hostname, mountPoint SINCE 5 minutes ago"
+    warn: 85
+    crit: 95
+    for_seconds: 600
+    unit: percent
+    summary: A disk is nearly full.
