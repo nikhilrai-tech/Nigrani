@@ -41,6 +41,7 @@ datasources:
 #   azure     Azure Monitor (azure:)        VM, PostgreSQL, SQL and App Service plan rules
 #   datadog   Datadog (datadog:)            host CPU, memory and disk from the Datadog Agent
 #   newrelic  New Relic (newrelic:)         host CPU, memory and disk from the infrastructure agent
+#   gcp       Google Cloud (gcp:)           Compute Engine CPU and disk, Cloud SQL CPU and memory
 #   argocd    Argo CD (argocd:)             out-of-sync, degraded and failing applications
 #   kubernetes Kubernetes (kubernetes:)    crash-looping pods, unready nodes, deployments missing replicas
 #   cloudwatch AWS CloudWatch (cloudwatch:) RDS and EC2 alerts read straight from CloudWatch
@@ -140,6 +141,12 @@ digest:
 #   account_id: "1234567"
 #   api_key: ${NEW_RELIC_API_KEY}
 #   region: us                                    # or eu
+
+# Google Cloud Monitoring metrics as alert rules (datasource: gcp). Optional. A service account with the Monitoring Viewer role.
+# gcp:
+#   project_id: my-project-123
+#   credentials_file: /config/gcp-key.json        # or credentials_json: ${GCP_SERVICE_ACCOUNT_JSON}; empty = the machine's own
+#                                                 # account (GOOGLE_APPLICATION_CREDENTIALS, or the GCE/GKE metadata server)
 
 # Azure Monitor metrics as alert rules (datasource: azure). Optional. A service principal with the Monitoring Reader role.
 # azure:

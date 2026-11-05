@@ -5,3 +5,4 @@ pyyaml>=6
 pydantic>=2.6,<3
 anthropic>=2,<3
 mcp>=2,<3
+cryptography>=42

@@ -162,7 +162,7 @@ class RuleCfg(_M):
     summary: str = ""
     enabled: bool = True
     servers: list[str] = Field(default_factory=list)  # empty = evaluate on every server
-    datasource: Literal["prometheus", "loki", "sentry", "cloudwatch", "kubernetes", "datadog", "azure", "argocd", "newrelic"] = "prometheus"  # loki: LogQL metric query; sentry: a Sentry search
+    datasource: Literal["prometheus", "loki", "sentry", "cloudwatch", "kubernetes", "datadog", "azure", "argocd", "newrelic", "gcp"] = "prometheus"  # loki: LogQL metric query; sentry: a Sentry search
 
 
 ChannelType = Literal["slack", "teams", "discord", "telegram", "email", "webhook", "whatsapp"]
@@ -354,6 +354,33 @@ class NewRelicCfg(_M):
         return bool(self.account_id and self.api_key)
 
 
+class GcpCfg(_M):
+    """Google Cloud Monitoring: metric types become alert rules (read-only; the account needs the Monitoring Viewer role)."""
+    project_id: str = ""
+    credentials_file: str = ""  # a service account key (JSON); empty = GOOGLE_APPLICATION_CREDENTIALS, then the metadata server (GCE, GKE)
+    credentials_json: str = ""  # the same key inline, for example ${GCP_SERVICE_ACCOUNT_JSON}
+    url: str = "https://monitoring.googleapis.com"  # only for a proxy or a test double
+    token_url: str = ""  # only for a test double
+
+    @field_validator("project_id")
+    @classmethod
+    def _project(cls, v: str) -> str:
+        if v and not re.fullmatch(r"[a-z][a-z0-9:.-]{4,60}", v):
+            raise ValueError("must look like my-project-123")
+        return v
+
+    @field_validator("url", "token_url")
+    @classmethod
+    def _url(cls, v: str) -> str:
+        if v and not re.match(r"^https?://[^\s]+$", v):
+            raise ValueError("must start with http:// or https://")
+        return v.rstrip("/")
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.project_id)
+
+
 class DatadogCfg(_M):
     """Datadog: metric queries become alert rules and monitors that are not OK get their own page."""
     site: str = "datadoghq.com"  # datadoghq.eu, us3.datadoghq.com, us5.datadoghq.com, ap1.datadoghq.com, ddog-gov.com
@@ -500,6 +527,7 @@ class ServerCfg(_M):
     datadog: DatadogCfg | None = None
     azure: AzureCfg | None = None
     newrelic: NewRelicCfg | None = None
+    gcp: GcpCfg | None = None
     argocd: ArgoCDCfg | None = None
 
     @field_validator("id")
@@ -528,6 +556,7 @@ class ServerView:
     azure: AzureCfg
     argocd: ArgoCDCfg
     newrelic: NewRelicCfg
+    gcp: GcpCfg
 
 
 class Config(_M):
@@ -552,6 +581,7 @@ class Config(_M):
     datadog: DatadogCfg = DatadogCfg()
     azure: AzureCfg = AzureCfg()
     newrelic: NewRelicCfg = NewRelicCfg()
+    gcp: GcpCfg = GcpCfg()
     argocd: ArgoCDCfg = ArgoCDCfg()
     digest: DigestCfg = DigestCfg()
     alerts: AlertsCfg = AlertsCfg()
@@ -575,7 +605,7 @@ class Config(_M):
         if not self.servers:
             env = self.app.environment
             return [ServerView("default", env or self.app.name, env, self.datasources, self.services, self.checks,
-                               self.github, self.grafana, self.sentry, self.cloudwatch, self.kubernetes, self.datadog, self.azure, self.argocd, self.newrelic)]
+                               self.github, self.grafana, self.sentry, self.cloudwatch, self.kubernetes, self.datadog, self.azure, self.argocd, self.newrelic, self.gcp)]
         return [
             ServerView(
                 s.id, s.name or s.id, s.environment or s.name or s.id,
@@ -591,6 +621,7 @@ class Config(_M):
                 s.azure or self.azure,
                 s.argocd or self.argocd,
                 s.newrelic or self.newrelic,
+                s.gcp or self.gcp,
             )
             for s in self.servers
         ]

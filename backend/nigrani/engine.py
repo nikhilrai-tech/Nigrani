@@ -70,9 +70,10 @@ class Engine:
     def __init__(self, store: Store, proms: dict[str, Prom] | Prom, notifier: Notifier, cfg: Config,
                  clock: Callable[[], float] = time.time, lokis: dict[str, Prom] | None = None,
                  sentries: dict[str, Any] | None = None, clouds: dict[str, Any] | None = None,
-                 kubes: dict[str, Any] | None = None, dogs: dict[str, Any] | None = None, azures: dict[str, Any] | None = None, argos: dict[str, Any] | None = None, newrelics: dict[str, Any] | None = None):
+                 kubes: dict[str, Any] | None = None, dogs: dict[str, Any] | None = None, azures: dict[str, Any] | None = None, argos: dict[str, Any] | None = None, newrelics: dict[str, Any] | None = None, gcps: dict[str, Any] | None = None):
         self.store, self.notifier, self.cfg, self.clock = store, notifier, cfg, clock
         self.lokis: dict[str, Prom] = lokis or {}  # server id -> Loki client (only servers that have Loki)
+        self.gcps: dict[str, Any] = gcps or {}  # server id -> Google Cloud Monitoring client
         self.newrelics: dict[str, Any] = newrelics or {}  # server id -> New Relic client
         self.azures: dict[str, Any] = azures or {}  # server id -> Azure Monitor client
         self.argos: dict[str, Any] = argos or {}  # server id -> Argo CD client
@@ -299,6 +300,8 @@ class Engine:
             return self.argos.get(server_id)
         if datasource == "newrelic":
             return self.newrelics.get(server_id)
+        if datasource == "gcp":
+            return self.gcps.get(server_id)
         return prom
 
     def drop_rule(self, rule_id: str, now: float | None = None, server: str | None = None) -> None:

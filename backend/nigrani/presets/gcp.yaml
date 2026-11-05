@@ -1,0 +1,40 @@
+# Needs: the `gcp:` block in the config (project id and a service account with the Monitoring Viewer role). Rules in this preset
+# read Cloud Monitoring metrics, one alert per VM or database; resource types you do not use simply have no series. Servers
+# without Google Cloud skip them.
+rules:
+  - id: gcp-vm-cpu
+    name: GCP VM CPU high
+    datasource: gcp
+    expr: compute.googleapis.com/instance/cpu/utilization resource.label.instance_id=*
+    warn: 0.8
+    crit: 0.95
+    for_seconds: 600
+    unit: ratio
+    summary: A Compute Engine VM's CPU has been saturated.
+  - id: gcp-sql-cpu
+    name: GCP Cloud SQL CPU high
+    datasource: gcp
+    expr: cloudsql.googleapis.com/database/cpu/utilization resource.label.database_id=*
+    warn: 0.8
+    crit: 0.95
+    for_seconds: 600
+    unit: ratio
+    summary: A Cloud SQL instance's CPU has been saturated.
+  - id: gcp-sql-disk
+    name: GCP Cloud SQL disk filling up
+    datasource: gcp
+    expr: cloudsql.googleapis.com/database/disk/utilization resource.label.database_id=*
+    warn: 0.85
+    crit: 0.95
+    for_seconds: 600
+    unit: ratio
+    summary: A Cloud SQL instance's disk is nearly full.
+  - id: gcp-sql-memory
+    name: GCP Cloud SQL memory high
+    datasource: gcp
+    expr: cloudsql.googleapis.com/database/memory/utilization resource.label.database_id=*
+    warn: 0.9
+    crit: 0.97
+    for_seconds: 600
+    unit: ratio
+    summary: A Cloud SQL instance is running out of memory.
