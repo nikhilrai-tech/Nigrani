@@ -23,6 +23,7 @@ PING = "query($account: Int!) { actor { account(id: $account) { id } } }"
 TIME_KEYS = {"beginTimeSeconds", "endTimeSeconds", "timestamp", "facet"}
 AUTH_CLASSES = {"UNAUTHORIZED", "FORBIDDEN", "ACCESS_DENIED", "UNAUTHENTICATED"}
 CLAUSES = re.compile(r"\s+(SINCE|UNTIL|TIMESERIES)\b.*$", re.I | re.S)
+FACET = re.compile(r"\bFACET\s+(.+?)(?:\s+(?:LIMIT|SINCE|UNTIL|TIMESERIES|COMPARE|WITH|ORDER)\b|$)", re.I | re.S)
 
 
 class NewRelicError(PromUnavailable):
@@ -33,26 +34,36 @@ def _num(v: Any) -> float | None:
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
 
-def _labels(row: dict[str, Any], metric: str, columns: int) -> dict[str, str]:
+def facet_names(query: str) -> list[str]:
+    """The attribute names in `FACET a, b`, so labels read hostname=web-1 and not facet=web-1. Empty when they cannot be told
+    apart (a FACET on an expression such as cases(...))."""
+    m = FACET.search(query or "")
+    if not m or "(" in m.group(1):
+        return []
+    return [n.strip().strip("`") for n in m.group(1).split(",") if n.strip()]
+
+
+def _labels(row: dict[str, Any], metric: str, columns: int, names: list[str]) -> dict[str, str]:
     facet = row.get("facet")
     out: dict[str, str] = {}
     if isinstance(facet, list):
-        out = {f"facet{i + 1}": str(v) for i, v in enumerate(facet)}
+        named = len(names) == len(facet)
+        out = {(names[i] if named else f"facet{i + 1}"): str(v) for i, v in enumerate(facet)}
     elif facet is not None:
-        out = {"facet": str(facet)}
+        out = {(names[0] if len(names) == 1 else "facet"): str(facet)}
     if columns > 1 or not out:
         out["metric"] = metric
     return out
 
 
-def split_rows(rows: list[Any]) -> list[tuple[dict[str, str], dict[str, Any]]]:
+def split_rows(rows: list[Any], names: list[str] | None = None) -> list[tuple[dict[str, str], dict[str, Any]]]:
     """-> [(labels, row)] with one entry per (facet, numeric column)."""
     out = []
     for row in rows:
         if not isinstance(row, dict):
             continue
         cols = [k for k, v in row.items() if k not in TIME_KEYS and _num(v) is not None]
-        out += [(_labels(row, c, len(cols)), {"column": c, "value": float(row[c]), "row": row}) for c in cols]
+        out += [(_labels(row, c, len(cols), names or []), {"column": c, "value": float(row[c]), "row": row}) for c in cols]
     return out
 
 
@@ -121,14 +132,14 @@ class NewRelic:
         return rows
 
     async def instant(self, expr: str, at: float | None = None) -> list[dict[str, Any]]:
-        return [{"labels": labels, "value": item["value"]} for labels, item in split_rows(await self._nrql(expr))]
+        return [{"labels": labels, "value": item["value"]} for labels, item in split_rows(await self._nrql(expr), facet_names(expr))]
 
     async def range(self, query: str, start: float, end: float, step: float = 0) -> list[dict[str, Any]]:
         """The same query over a window as a time series (its own SINCE/UNTIL/TIMESERIES are replaced)."""
         base = CLAUSES.sub("", query.strip())
         rows = await self._nrql(f"{base} SINCE {int(start)} UNTIL {int(end)} TIMESERIES")
         series: dict[tuple, dict[str, Any]] = {}
-        for labels, item in split_rows(rows):
+        for labels, item in split_rows(rows, facet_names(query)):
             ts = item["row"].get("beginTimeSeconds") or item["row"].get("endTimeSeconds")
             if _num(ts) is None:
                 continue
