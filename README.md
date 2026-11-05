@@ -1,7 +1,7 @@
 # Nigrani
 
 **Self-hosted monitoring and alerting dashboard for Docker projects.** One container that sits on top of Prometheus and
-Loki, adds Sentry, Kubernetes, AWS CloudWatch, Datadog and Azure Monitor as alert sources, and tells you on Slack, Microsoft
+Loki, adds Sentry, Kubernetes, AWS CloudWatch, Datadog, New Relic and Azure Monitor as alert sources, and tells you on Slack, Microsoft
 Teams, Telegram, email, WhatsApp, Discord or a webhook when something breaks.
 
 [![CI](https://github.com/nikhilrai-tech/Nigrani/actions/workflows/ci.yml/badge.svg)](https://github.com/nikhilrai-tech/Nigrani/actions/workflows/ci.yml)
@@ -69,6 +69,7 @@ silently stops. Nigrani answers the operational questions directly:
 | **AI assistants (MCP)** | An MCP server at `/mcp` so Claude Code and other assistants can ask "what is firing?", read an incident, or run a PromQL query. Read-only, with API tokens that never get the admin role |
 | **Argo CD** | The state of your GitOps applications on their own page (health, sync, revision, errors), alert rules for applications that are out of sync, degraded, stuck progressing or failing to sync, and every sync as a deploy marker on the incident page. Read-only, with a token that can only `get` |
 | **Datadog** | Alert rules straight on Datadog metric queries (one alert per host or tag), the metric charted on the incident page, and a page of monitors that are alerting, warning or have no data |
+| **New Relic** | Alert rules written in NRQL through NerdGraph, one alert per facet, with the query charted on the incident page |
 | **Azure Monitor** | Alert rules straight on Azure Monitor metrics (VMs, PostgreSQL, SQL, App Service...), one alert per resource, with the metric charted on the incident page |
 | **Grafana links** | "Open in Grafana" from an alert, a rule or the Logs page (Explore with the same query and time range), plus links to your own dashboards from the incident, container, host and overview screens |
 | **Service pages** | Traffic (Django), Redis, Postgres, AWS RDS, MQTT, Celery out of the box. Add your own pages in YAML |
@@ -534,6 +535,27 @@ presets: [core, datadog]              # host CPU, memory and disk rules from the
 - The metric is charted on the incident page like any other.
 - If Datadog refuses the keys or is unreachable the rule shows why and nothing is raised or resolved because of it.
 - With `servers:` each server can have its own `datadog:` block (another site or organization).
+
+## New Relic
+
+Alert on New Relic data with NRQL. Nigrani calls NerdGraph (New Relic's GraphQL API) with a User API key. Read-only.
+
+```yaml
+newrelic:
+  account_id: "1234567"
+  api_key: ${NEW_RELIC_API_KEY}       # a User key (NRAK-...) that may read this account
+  region: us                          # or eu
+presets: [core, newrelic]             # host CPU, memory and disk rules from the infrastructure agent
+```
+
+- A rule's data source is *newrelic* and its expression is an NRQL query that returns numbers, for example
+  `SELECT average(cpuPercent) FROM SystemSample FACET hostname SINCE 5 minutes ago`. Each FACET value is its own alert.
+  A query with several numeric columns gives one series per column.
+- End the query with a short `SINCE`: without one New Relic averages over the last hour.
+- The incident page charts the same query over the incident's window (Nigrani swaps in its own `SINCE`, `UNTIL` and
+  `TIMESERIES`).
+- If New Relic refuses the key or is unreachable the rule shows why and nothing is raised or resolved because of it.
+- With `servers:` each server can have its own `newrelic:` block (another account or region).
 
 ## Azure Monitor
 

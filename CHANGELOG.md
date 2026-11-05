@@ -5,6 +5,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **New Relic** as a data source: alert rules written in NRQL through NerdGraph (User API key, read-only), one alert per facet,
+  charted on the incident page. New `newrelic` preset for host CPU, memory and disk.
+
 ## [0.7.0] - 2026-11-04
 
 - Pages now use the full width on wide screens (the content area was capped at 1500px and left a gap on the right); it is centred up to 2000px.
