@@ -66,7 +66,7 @@ def run(c):
 def test_instant_gives_one_series_per_facet_and_skips_nulls():
     c, s = make()
     rows = run(c.instant("SELECT average(cpuPercent) FROM SystemSample FACET hostname SINCE 5 minutes ago"))
-    assert rows == [{"labels": {"facet": "web-1"}, "value": 91.5}, {"labels": {"facet": "web-2"}, "value": 12.0}]
+    assert rows == [{"labels": {"hostname": "web-1"}, "value": 91.5}, {"labels": {"hostname": "web-2"}, "value": 12.0}]
     req = s.requests[-1]
     assert req.headers["api-key"] == "NRAK-key" and req.url.host == "api.newrelic.com"
     assert json.loads(req.content)["variables"]["account"] == 123
@@ -78,7 +78,7 @@ def test_without_a_facet_and_with_several_columns_and_facets():
     both = run(c.instant("SELECT count(*), average(duration) FROM Transaction"))
     assert {tuple(r["labels"].items()): r["value"] for r in both} == {(("metric", "count"),): 120.0, (("metric", "average.duration"),): 0.4}
     assert run(c.instant("SELECT average(cpuPercent) FROM SystemSample FACET hostname, region")) == [
-        {"labels": {"facet1": "web-1", "facet2": "eu"}, "value": 91.5}]
+        {"labels": {"hostname": "web-1", "region": "eu"}, "value": 91.5}]
 
 
 def test_range_replaces_the_time_clauses_and_groups_points_by_facet():
@@ -86,7 +86,15 @@ def test_range_replaces_the_time_clauses_and_groups_points_by_facet():
     rows = run(c.range("SELECT average(cpuPercent) FROM SystemSample FACET hostname SINCE 5 minutes ago", NOW - 3600, NOW, 60))
     q = s.queries[-1]
     assert q.count("SINCE") == 1 and "5 minutes" not in q and q.endswith("TIMESERIES") and f"SINCE {int(NOW - 3600)} UNTIL {int(NOW)}" in q
-    assert rows == [{"labels": {"facet": "web-1"}, "points": [[int(NOW) - 120.0, 40.0], [int(NOW) - 60.0, 91.5]]}]
+    assert rows == [{"labels": {"hostname": "web-1"}, "points": [[int(NOW) - 120.0, 40.0], [int(NOW) - 60.0, 91.5]]}]
+
+
+def test_facet_names_come_from_the_query():
+    from nigrani.newrelic import facet_names
+    assert facet_names("SELECT x FROM S FACET hostname, `my attr` LIMIT 5 SINCE 1 hour ago") == ["hostname", "my attr"]
+    assert facet_names("SELECT x FROM S FACET cases(WHERE a > 1 AS 'big')") == [] and facet_names("SELECT count(*) FROM S") == []
+    c, _ = make()                                  # an expression facet falls back to facet / facet1...
+    assert run(c.instant("SELECT average(cpuPercent) FROM SystemSample FACET cases(WHERE a > 1)"))[0]["labels"] == {"facet": "web-1"}
 
 
 def test_region_and_url_selection():
@@ -153,7 +161,7 @@ def test_api_rules_preview_and_incident_chart(tmp_path):
         prev = c.post("/api/rules/test", json=body, headers=H).json()
         assert prev["series"] == [{"series": "web-1", "value": 91.5, "severity": "critical"}, {"series": "web-2", "value": 12.0, "severity": None}]
         made = c.post("/api/rules", json=body, headers=H).json()
-        labels = {"facet": "web-1"}
+        labels = {"hostname": "web-1"}
         iid = c.app.state.store.create_incident(source_id=made["id"], series_key=series_key(labels), rule_name="CPU", series="web-1",
                                                 labels=labels, severity="critical", started_at=time.time() - 60, server="default")
         d = c.get(f"/api/incidents/{iid}").json()
