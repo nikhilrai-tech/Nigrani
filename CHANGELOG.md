@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-06
+
 ### Added
 - The live demo has an SLOs page (availability, latency and uptime objectives) with believable sample numbers, and the SLO screenshot is retaken in the Ember look.
 - **Google Cloud Monitoring** as a data source: alert rules on metric types with label filters, one alert per time series, signed in with
